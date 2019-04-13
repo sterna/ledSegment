@@ -1,0 +1,3 @@
+[submodule "stm32utils"]
+	path = stm32utils
+	url = https://sterna@github.com/sterna/stm32Utils.git
