@@ -13,6 +13,8 @@
 
 #include "apa102.h"
 
+//Add some dummy comment here (to be removed...)
+
 /*
  * A union to convert the apa102Pixel struct to uint32_t
  */
