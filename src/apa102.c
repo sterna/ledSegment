@@ -85,6 +85,9 @@ void apa102Init(uint8_t strip, uint16_t nofLeds)
 	uint8_t tmpDMAIRQn=0;
 	SPI_TypeDef* tmpSPI=0;
 	USART_TypeDef* tmpUSART=0;
+	uint32_t tmpRemap=0;
+	uint32_t tmpSpeedSetting=0;
+
 	if(strip==0)
 	{
 		tmpGPIOPort = APA_MOSI_PORT;
@@ -93,6 +96,9 @@ void apa102Init(uint8_t strip, uint16_t nofLeds)
 		tmpDMAPeriphBaseAdr=(uint32_t)(APA_SPI_DR);
 		tmpDMAIRQn=APA_DMA_IRQn;
 		tmpSPI=APA_SPI;
+		tmpRemap=APA_REMAP_CONFIG;
+		tmpSpeedSetting= APA_SPEED_SETTING;
+
 	}
 	else if(strip==1)
 	{
@@ -102,6 +108,8 @@ void apa102Init(uint8_t strip, uint16_t nofLeds)
 		tmpDMAPeriphBaseAdr=(uint32_t)(APA2_SPI_DR);
 		tmpDMAIRQn=APA2_DMA_IRQn;
 		tmpSPI=APA2_SPI;
+		tmpRemap=APA2_REMAP_CONFIG;
+		tmpSpeedSetting= APA2_SPEED_SETTING;
 	}
 	else if(strip==2)
 	{
@@ -112,6 +120,8 @@ void apa102Init(uint8_t strip, uint16_t nofLeds)
 		tmpDMAPeriphBaseAdr=(uint32_t)(APA3_SPI_DR);
 		tmpDMAIRQn=APA3_DMA_IRQn;
 		tmpUSART=APA3_SPI;
+		tmpRemap=APA3_REMAP_CONFIG;
+		tmpSpeedSetting= APA3_SPEED_SETTING;
 	}
 	else
 	{
@@ -130,6 +140,11 @@ void apa102Init(uint8_t strip, uint16_t nofLeds)
 	if(tmpUSART)
 	{
 		utilSetClockUSART(tmpUSART,ENABLE);
+	}
+	if(tmpRemap)
+	{
+		GPIO_PinRemapConfig(tmpRemap,ENABLE);
+		GPIO_PinRemapConfig(GPIO_Remap_SWJ_JTAGDisable,ENABLE);
 	}
 	//Init pins
 	GPIO_InitTypeDef GPIOInitStruct;
@@ -175,12 +190,11 @@ void apa102Init(uint8_t strip, uint16_t nofLeds)
 		SPIInitStruct.SPI_CPOL = SPI_CPOL_High;
 		SPIInitStruct.SPI_CPHA = SPI_CPHA_2Edge;
 		SPIInitStruct.SPI_NSS = SPI_NSS_Soft;
-		SPIInitStruct.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_16;	//Not sure how fast this will be... Todo: Calculate-> 32 gives about 2.4MHz
+		SPIInitStruct.SPI_BaudRatePrescaler = (uint16_t)tmpSpeedSetting;
 		SPIInitStruct.SPI_FirstBit = SPI_FirstBit_MSB;
 		SPIInitStruct.SPI_CRCPolynomial = SPI_CRCPR_CRCPOLY;
 		SPI_Init(tmpSPI, &SPIInitStruct);
 
-		//SPI_NSSInternalSoftwareConfig(tmpSPI,SPI_NSSInternalSoft_Set);
 		SPI_SSOutputCmd(tmpSPI,ENABLE);
 
 		SPI_I2S_DMACmd(tmpSPI,SPI_I2S_DMAReq_Tx,ENABLE);
@@ -189,10 +203,11 @@ void apa102Init(uint8_t strip, uint16_t nofLeds)
 	}
 	else if(strip==2) //This strip uses USART
 	{
+		//Todo: Strip=2 doesn't work
 		USART_InitTypeDef USARTInitStruct;
-		USARTInitStruct.USART_BaudRate = (uint32_t)2000000;	//4 million Hertz!
+		USARTInitStruct.USART_BaudRate = tmpSpeedSetting;
 		USARTInitStruct.USART_WordLength = USART_WordLength_8b;
-		USARTInitStruct.USART_StopBits = USART_StopBits_1;
+		USARTInitStruct.USART_StopBits = USART_StopBits_0_5;
 		USARTInitStruct.USART_Parity = USART_Parity_No;
 		USARTInitStruct.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
 		USARTInitStruct.USART_Mode = USART_Mode_Tx;
@@ -378,7 +393,7 @@ void apa102UpdateStripBitbang(uint8_t strip)
 
 /*
  * Indicates if a transfer is currently in progress
- * If strip ==
+ * If strip == APA_ALL_STRIPS, it's true if any of the strips is busy
  */
 bool apa102DMABusy(uint8_t strip)
 {
