@@ -191,10 +191,10 @@ bool ledSegSetFade(uint8_t seg, ledSegmentFadeSetting_t* fs)
 	{
 		st->fadeCycle=fs->cycles*master_steps;	//Each cycle shall be one half cycle (min->max)
 	}
-	//If the global setting is not used, use whatever is set as default
+	//If the global setting is not used (set to 0) the default global will be loaded dynamically from the current global
 	if(fd->globalSetting == 0)
 	{
-		fd->globalSetting = APA_MAX_GLOBAL_SETTING+1;
+		//fd->globalSetting = APA_MAX_GLOBAL_SETTING+1;
 	}
 	st->fadeActive = true;
 
@@ -232,10 +232,10 @@ bool ledSegSetPulse(uint8_t seg, ledSegmentPulseSetting_t* ps)
 	}
 	st->pulseActive = true;
 	st->cyclesToPulseMove = ps->pixelTime;
-	//If the global setting is not used, use whatever is set as default
+	//If the global setting is not used (set to 0) the default global will be loaded dynamically from the current global
 	if(pu->globalSetting == 0)
 	{
-		pu->globalSetting = APA_MAX_GLOBAL_SETTING+1;
+		//pu->globalSetting = APA_MAX_GLOBAL_SETTING+1;
 	}
 
 	return true;
@@ -439,6 +439,21 @@ bool ledSegRestart(uint8_t seg, bool restartFade, bool restartPulse)
 			segments[seg].state.pulseDir = -1;
 		}
 	}
+	return true;
+}
+
+/*
+ * Sets a new global setting for the current segment
+ * Setting global to 0 will use the set default in the library
+ */
+bool ledSegSetGlobal(uint8_t seg, uint8_t fadeGlobal, uint8_t pulseGlobal)
+{
+	if(!ledSegExists(seg))
+	{
+		return false;
+	}
+	segments[seg].state.confFade.globalSetting=fadeGlobal;
+	segments[seg].state.confPulse.globalSetting=pulseGlobal;
 	return true;
 }
 

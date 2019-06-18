@@ -276,6 +276,10 @@ void apa102SetPixelWithGlobal(uint8_t strip, uint16_t pixel, uint8_t r, uint8_t 
 	pixels[strip][pixel].r=r;
 	pixels[strip][pixel].g=g;
 	pixels[strip][pixel].b=b;
+	if(global==0 || global > APA_MAX_GLOBAL_SETTING)
+	{
+		global = defaultGlobal;
+	}
 	pixels[strip][pixel].global=APA_ADD_GLOBAL_BITS(global);
 	newData[strip]=true;
 }
@@ -431,7 +435,7 @@ void apa102FillRange(uint8_t strip, uint16_t start, uint16_t stop, uint8_t r, ui
 	}
 	do
 	{
-		if(global>APA_MAX_GLOBAL_SETTING)
+		if(global == 0 || global>APA_MAX_GLOBAL_SETTING)
 		{
 			apa102SetPixel(strip,start,r,g,b,true);
 		}
