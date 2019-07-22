@@ -324,7 +324,7 @@ bool ledSegSetLed(uint8_t seg, uint16_t led, uint8_t r, uint8_t g, uint8_t b)
 	{
 		return false;
 	}
-	apa102SetPixel(segments[seg].strip,segments[seg].start+led-1,r,g,b,false);
+	apa102SetPixel(segments[seg].strip,segments[seg].start+led-1,r,g,b,true);
 	return true;
 }
 
