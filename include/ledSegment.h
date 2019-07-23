@@ -95,7 +95,7 @@ typedef struct
 	int8_t fadeDir;				//The current direction of fade
 
 	int8_t pulseDir;				//The wander direction for the LED
-	uint16_t currentLed;			//The current first LED in the pulse (the most faded LED before the start of max)
+	uint16_t currentLed;			//The current first LED in the pulse (the most faded LED before the start of max). Current LED is absolute relative to the strip
 	uint16_t cyclesToPulseMove;		//The number of cycles left to pulse movement
 	uint16_t cyclesToFadeChange;	//The number of cycles left to fade update (used to emulate fractional rates). This does not need to be set
 	uint32_t pulseCycle;			//The current cycle of the animation
@@ -103,7 +103,7 @@ typedef struct
 	bool fadeActive;				//Indicates if the strip has an active fade
 	bool pulseActive;				//Indicates if the strip has an active pulse
 	ledSegmentPulseSetting_t confPulse;	//All information about the pulse
-	ledSegmentFadeSetting_t confFade;		//All information about the fadeö
+	ledSegmentFadeSetting_t confFade;		//All information about the fade
 
 }ledSegmentState_t;
 

@@ -221,6 +221,8 @@ bool ledSegSetPulse(uint8_t seg, ledSegmentPulseSetting_t* ps)
 	//Copy new setting into state
 	memcpy(pu,ps,sizeof(ledSegmentPulseSetting_t));
 	st->pulseDir=ps->startDir;
+	//Check if start led is in the segment
+	ps->startLed += (sg->start-1);
 	st->currentLed = ps->startLed;
 	if(st->currentLed > sg->stop)
 	{
