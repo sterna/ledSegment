@@ -28,6 +28,8 @@
  *	Fade supports two modes: bounce and loop.
  *		In Loop mode, the intensity goes only in one direction, jumping immediately to the other extreme when done
  *		In Bounce mode, the intensity goes back and forth between min and max
+ *	Fade can also have the colToFrom-flag. This is used when wanting to fade between two different colours. Min is the from colour, and Max is the To colour
+ *	In bounce mode, the fade is back an forth between the two colours
  *
  *	Note on some animation tricks
  *	- Fill a segment with a pulse:
@@ -35,6 +37,14 @@
  *	- Use only pulse on a segment:
  *		Set max of all colours of fade=0
  *
+ *	New mode: Glitter mode. Runs instead of a pulse.
+ *
+ *	Instead of a wandering pulse, it will light up a number of LEDs in random places in the whole strip.
+ *	It has the same modes as regular pulse (loop, loop_end and Bounce):
+ *		Loop: A number of glitter points appears from 0 up until a set number. Then it restarts from 0.
+ *		Loop_end: Same as loop, but will end when the set number is reached
+ *		Bounce: Same as loop, but when the top number is reached, the number instead goes down to 0.
+ *	On top of these modes, glitter points can either be persistent or updating.
  *
  *
  */
@@ -145,18 +155,18 @@ bool ledSegSetFade(uint8_t seg, ledSegmentFadeSetting_t* fs)
 	{
 		makeItSlower=false;
 		master_steps=fs->fadeTime/(LEDSEG_UPDATE_PERIOD_TIME*periodMultiplier);
-		st->r_rate = (fs->r_max-fs->r_min)/master_steps;
-		if(st->r_rate<1 && fs->r_max)
+		st->r_rate = abs((fs->r_max-fs->r_min))/master_steps;
+		if(st->r_rate<1 && (fs->r_max != fs->r_min))
 		{
 			makeItSlower=true;
 		}
-		st->g_rate = (fs->g_max-fs->g_min)/master_steps;
-		if(st->g_rate<1 && fs->g_max)
+		st->g_rate = abs((fs->g_max-fs->g_min))/master_steps;
+		if(st->g_rate<1 && (fs->g_max != fs->g_min))
 		{
 			makeItSlower=true;
 		}
-		st->b_rate = (fs->b_max-fs->b_min)/master_steps;
-		if(st->b_rate<1 && fs->b_max)
+		st->b_rate = abs((fs->b_max-fs->b_min))/master_steps;
+		if(st->b_rate<1 && (fs->b_max != fs->b_min))
 		{
 			makeItSlower=true;
 		}
@@ -759,6 +769,9 @@ static void fadeCalcColour(uint8_t seg)
 	st=&(segments[seg].state);
 	conf=&(st->confFade);
 	uint8_t compareColor=COL_BLUE;
+	bool redReversed=false;
+	bool blueReversed=false;
+	bool greenReversed=false;
 	if(conf->b_max == conf->b_min)
 	{
 		compareColor = COL_GREEN;
@@ -769,42 +782,91 @@ static void fadeCalcColour(uint8_t seg)
 	}
 	if(st->fadeActive)
 	{
-		st->r=utilIncWithDir(st->r,st->fadeDir,st->r_rate,conf->r_min,conf->r_max);
-		st->g=utilIncWithDir(st->g,st->fadeDir,st->g_rate,conf->g_min,conf->g_max);
-		st->b=utilIncWithDir(st->b,st->fadeDir,st->b_rate,conf->b_min,conf->b_max);
+		//If we're going from one colour to another, we need to revert the direction if min>max
+		//Todo: test if this works
+		if(conf->colFromTo)
+		{
+			if(conf->r_min>conf->r_max)
+			{
+				redReversed=true;
+			}
+			if(conf->g_min>conf->g_max)
+			{
+				greenReversed=true;
+			}
+			if(conf->b_min>conf->b_max)
+			{
+				blueReversed=true;
+			}
+			if(redReversed)
+			{
+				st->r=utilIncWithDir(st->r,st->fadeDir*-1,st->r_rate,conf->r_max,conf->r_min);
+			}
+			else
+			{
+				st->r=utilIncWithDir(st->r,st->fadeDir,st->r_rate,conf->r_min,conf->r_max);
+			}
+			if(greenReversed)
+			{
+				st->g=utilIncWithDir(st->g,st->fadeDir*-1,st->g_rate,conf->g_max,conf->g_min);
+			}
+			else
+			{
+				st->g=utilIncWithDir(st->g,st->fadeDir,st->g_rate,conf->g_min,conf->g_max);
+			}
+			if(blueReversed)
+			{
+				st->b=utilIncWithDir(st->b,st->fadeDir*-1,st->b_rate,conf->b_max,conf->b_min);
+			}
+			else
+			{
+				st->b=utilIncWithDir(st->b,st->fadeDir,st->b_rate,conf->b_min,conf->b_max);
+			}
+		}
+		else
+		{
+			st->r=utilIncWithDir(st->r,st->fadeDir,st->r_rate,conf->r_min,conf->r_max);
+			st->g=utilIncWithDir(st->g,st->fadeDir,st->g_rate,conf->g_min,conf->g_max);
+			st->b=utilIncWithDir(st->b,st->fadeDir,st->b_rate,conf->b_min,conf->b_max);
+		}
 
 		//Update dir when one existing color is complete (only in bounce mode)
 		if(conf->mode == LEDSEG_MODE_BOUNCE)
 		{
-			if(compareColor==COL_BLUE && conf->b_max)
+			int8_t dirInvert=1;
+			if(conf->colFromTo)
 			{
-				if(st->b>=conf->b_max)
+				dirInvert=-1;
+			}
+			if(compareColor==COL_BLUE)
+			{
+				if((blueReversed && st->b<=conf->b_max) || (!blueReversed && st->b>=conf->b_max))
 				{
 					st->fadeDir=-1;
 				}
-				else if(st->b<=conf->b_min)
+				else if((blueReversed && st->b>=conf->b_min) || (!blueReversed && st->b<=conf->b_min))
 				{
 					st->fadeDir=1;
 				}
 			}
-			else if (compareColor==COL_GREEN  && conf->g_max)
+			else if (compareColor==COL_GREEN)
 			{
-				if(st->g>=conf->g_max)
+				if((greenReversed && st->g<=conf->g_max) || (!greenReversed && st->g>=conf->g_max))
 				{
 					st->fadeDir=-1;
 				}
-				else if(st->g<=conf->g_min)
+				else if((greenReversed && st->g>=conf->g_min) || (!greenReversed && st->g<=conf->g_min))
 				{
 					st->fadeDir=1;
 				}
 			}
-			else if(conf->r_max)	//red
+			else if(conf->r_max != conf->r_min)	//red
 			{
-				if(st->r>=conf->r_max)
+				if((redReversed && st->r<=conf->r_max) || (!redReversed && st->r>=conf->r_max))
 				{
 					st->fadeDir=-1;
 				}
-				else if(st->r<=conf->r_min)
+				else if((redReversed && st->r>=conf->r_min) || (!redReversed && st->r<=conf->r_min))
 				{
 					st->fadeDir=1;
 				}
