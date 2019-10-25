@@ -71,6 +71,7 @@ typedef struct
 	uint8_t g_max;
 	uint8_t b_min;
 	uint8_t b_max;
+	bool colFromTo;				//If you want to fade from a colour to another. Min is the from-colour, max is the to-colour
 
 	uint32_t fadeTime;				//The time to fade from min to max
 	uint16_t fadePeriodMultiplier;	//This is used for long fades to avoid capping the rate
