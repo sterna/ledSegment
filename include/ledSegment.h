@@ -71,12 +71,12 @@ typedef struct
 	uint8_t g_max;
 	uint8_t b_min;
 	uint8_t b_max;
-	bool colFromTo;				//If you want to fade from a colour to another. Min is the from-colour, max is the to-colour
 
 	uint32_t fadeTime;				//The time to fade from min to max
 	uint16_t fadePeriodMultiplier;	//This is used for long fades to avoid capping the rate
 	int8_t startDir;				//The direction we shall start in (+1 or -1)
 	uint32_t cycles;				//If cycles=0, it will run forever (or rather for max uint32 cycles)
+	uint32_t fadeCycles;			//The number of animation cycles that will actually run. Not set by user, but generated during setFade.
 	uint8_t globalSetting;			//The global setting to be used
 }ledSegmentFadeSetting_t;
 
@@ -102,6 +102,7 @@ typedef struct
 	uint32_t pulseCycle;			//The current cycle of the animation
 	uint32_t fadeCycle;				//The current cycle of the animation (strictly speaking, this is number of updates left (one cycleFade is much smaller than a setting cycle
 	bool fadeActive;				//Indicates if the strip has an active fade
+	bool fadeDone;				//Indicates if the fade has completed it's cycles, but that fade color shall remain unchanged
 	bool pulseActive;				//Indicates if the strip has an active pulse
 	ledSegmentPulseSetting_t confPulse;	//All information about the pulse
 	ledSegmentFadeSetting_t confFade;		//All information about the fade

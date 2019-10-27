@@ -28,6 +28,7 @@
  *	Fade supports two modes: bounce and loop.
  *		In Loop mode, the intensity goes only in one direction, jumping immediately to the other extreme when done
  *		In Bounce mode, the intensity goes back and forth between min and max
+ *		Loop_end mode is not really supported for fade, and will do the same thing as Loop mode
  *	Fade can also have the colToFrom-flag. This is used when wanting to fade between two different colours. Min is the from colour, and Max is the To colour
  *	In bounce mode, the fade is back an forth between the two colours
  *
@@ -195,12 +196,13 @@ bool ledSegSetFade(uint8_t seg, ledSegmentFadeSetting_t* fs)
 	//Check if user wants a very large number of cycles. If so, mark this as run indefinitely
 	if((UINT32_MAX/st->fadeCycle)<master_steps)
 	{
-		st->fadeCycle = 0;
+		st->confFade.fadeCycles=0;
 	}
 	else
 	{
-		st->fadeCycle=fs->cycles*master_steps;	//Each cycle shall be one half cycle (min->max)
+		st->confFade.fadeCycles=fs->cycles*master_steps;	//Each cycle shall be one half cycle (min->max)
 	}
+	st->fadeCycle=st->confFade.fadeCycles;
 	//If the global setting is not used (set to 0) the default global will be loaded dynamically from the current global
 	if(fd->globalSetting == 0)
 	{
@@ -421,34 +423,37 @@ bool ledSegRestart(uint8_t seg, bool restartFade, bool restartPulse)
 	{
 		return false;
 	}
+	ledSegmentState_t* st=&segments[seg].state;
 	if(restartFade)
 	{
-		if(segments[seg].state.confFade.startDir == 1)
+		if(st->confFade.startDir == 1)
 		{
-			segments[seg].state.r = segments[seg].state.confFade.r_min;
-			segments[seg].state.g = segments[seg].state.confFade.g_min;
-			segments[seg].state.b = segments[seg].state.confFade.b_min;
-			segments[seg].state.fadeDir = 1;
+			st->r = st->confFade.r_min;
+			st->g = st->confFade.g_min;
+			st->b = st->confFade.b_min;
+			st->fadeDir = 1;
 		}
 		else
 		{
-			segments[seg].state.r = segments[seg].state.confFade.r_max;
-			segments[seg].state.g = segments[seg].state.confFade.g_max;
-			segments[seg].state.b = segments[seg].state.confFade.b_max;
-			segments[seg].state.fadeDir = -1;
+			st->r = st->confFade.r_max;
+			st->g = st->confFade.g_max;
+			st->b = st->confFade.b_max;
+			st->fadeDir = -1;
 		}
+		st->fadeDone=false;
+		st->fadeCycle=st->confFade.fadeCycles;
 	}
 	if(restartPulse)
 	{
-		if(segments[seg].state.confPulse.startDir == 1)
+		if(st->confPulse.startDir == 1)
 		{
-			segments[seg].state.currentLed = segments[seg].start;
-			segments[seg].state.pulseDir = 1;
+			st->currentLed = segments[seg].start;
+			st->pulseDir = 1;
 		}
 		else
 		{
-			segments[seg].state.currentLed = segments[seg].stop;
-			segments[seg].state.pulseDir = -1;
+			st->currentLed = segments[seg].stop;
+			st->pulseDir = -1;
 		}
 	}
 	return true;
@@ -478,7 +483,7 @@ bool ledSegSetGlobal(uint8_t seg, uint8_t fadeGlobal, uint8_t pulseGlobal)
  * It has several calculations cycles per period (configurable in ledSegment.h). Each of these iterations, a calculation is performed
  * Each calculation cycle will calculate a fraction of the total number of segments and load this into the big pixel array
  * Note: no calculations are done while the strips are updating (the DMA is running).
- *	 Otherwise, we would need to keep two copies of the whole pixel system, costing about 3kB of additional RAM
+ *	 Otherwise, we would need to keep two copies of the whole pixel map, costing about 3kB of additional RAM
  *
  */
 void ledSegRunIteration()
@@ -782,100 +787,124 @@ static void fadeCalcColour(uint8_t seg)
 	}
 	if(st->fadeActive)
 	{
-		//If we're going from one colour to another, we need to revert the direction if min>max
-		//Todo: test if this works
-		if(conf->colFromTo)
+		//Check if the direction of any colour is reveresed
+		if(conf->r_min>conf->r_max)
 		{
-			if(conf->r_min>conf->r_max)
-			{
-				redReversed=true;
-			}
-			if(conf->g_min>conf->g_max)
-			{
-				greenReversed=true;
-			}
-			if(conf->b_min>conf->b_max)
-			{
-				blueReversed=true;
-			}
-			if(redReversed)
-			{
-				st->r=utilIncWithDir(st->r,st->fadeDir*-1,st->r_rate,conf->r_max,conf->r_min);
-			}
-			else
-			{
-				st->r=utilIncWithDir(st->r,st->fadeDir,st->r_rate,conf->r_min,conf->r_max);
-			}
-			if(greenReversed)
-			{
-				st->g=utilIncWithDir(st->g,st->fadeDir*-1,st->g_rate,conf->g_max,conf->g_min);
-			}
-			else
-			{
-				st->g=utilIncWithDir(st->g,st->fadeDir,st->g_rate,conf->g_min,conf->g_max);
-			}
-			if(blueReversed)
-			{
-				st->b=utilIncWithDir(st->b,st->fadeDir*-1,st->b_rate,conf->b_max,conf->b_min);
-			}
-			else
-			{
-				st->b=utilIncWithDir(st->b,st->fadeDir,st->b_rate,conf->b_min,conf->b_max);
-			}
+			redReversed=true;
+		}
+		if(conf->g_min>conf->g_max)
+		{
+			greenReversed=true;
+		}
+		if(conf->b_min>conf->b_max)
+		{
+			blueReversed=true;
+		}
+		if(redReversed)
+		{
+			st->r=utilIncWithDir(st->r,st->fadeDir*-1,st->r_rate,conf->r_max,conf->r_min);
 		}
 		else
 		{
 			st->r=utilIncWithDir(st->r,st->fadeDir,st->r_rate,conf->r_min,conf->r_max);
+		}
+		if(greenReversed)
+		{
+			st->g=utilIncWithDir(st->g,st->fadeDir*-1,st->g_rate,conf->g_max,conf->g_min);
+		}
+		else
+		{
 			st->g=utilIncWithDir(st->g,st->fadeDir,st->g_rate,conf->g_min,conf->g_max);
+		}
+		if(blueReversed)
+		{
+			st->b=utilIncWithDir(st->b,st->fadeDir*-1,st->b_rate,conf->b_max,conf->b_min);
+		}
+		else
+		{
 			st->b=utilIncWithDir(st->b,st->fadeDir,st->b_rate,conf->b_min,conf->b_max);
 		}
-
-		//Update dir when one existing color is complete (only in bounce mode)
-		if(conf->mode == LEDSEG_MODE_BOUNCE)
+		//Check if we have reached an end (regardless of mode)
+		bool compColAtMin=false;
+		bool compColAtMax=false;
+		if(compareColor==COL_BLUE)
 		{
-			int8_t dirInvert=1;
-			if(conf->colFromTo)
+			if((blueReversed && st->b<=conf->b_max) || (!blueReversed && st->b>=conf->b_max))
 			{
-				dirInvert=-1;
+				compColAtMax=true;
 			}
-			if(compareColor==COL_BLUE)
+			else if((blueReversed && st->b>=conf->b_min) || (!blueReversed && st->b<=conf->b_min))
 			{
-				if((blueReversed && st->b<=conf->b_max) || (!blueReversed && st->b>=conf->b_max))
-				{
-					st->fadeDir=-1;
-				}
-				else if((blueReversed && st->b>=conf->b_min) || (!blueReversed && st->b<=conf->b_min))
-				{
-					st->fadeDir=1;
-				}
-			}
-			else if (compareColor==COL_GREEN)
-			{
-				if((greenReversed && st->g<=conf->g_max) || (!greenReversed && st->g>=conf->g_max))
-				{
-					st->fadeDir=-1;
-				}
-				else if((greenReversed && st->g>=conf->g_min) || (!greenReversed && st->g<=conf->g_min))
-				{
-					st->fadeDir=1;
-				}
-			}
-			else if(conf->r_max != conf->r_min)	//red
-			{
-				if((redReversed && st->r<=conf->r_max) || (!redReversed && st->r>=conf->r_max))
-				{
-					st->fadeDir=-1;
-				}
-				else if((redReversed && st->r>=conf->r_min) || (!redReversed && st->r<=conf->r_min))
-				{
-					st->fadeDir=1;
-				}
+				compColAtMin=true;
 			}
 		}
-		//if channel is active and cycles == 0, the channel will never be inactive
-		if(checkCycleCounter(&st->fadeCycle))
+		else if (compareColor==COL_GREEN)
 		{
-			st->fadeCycle=false;
+			if((greenReversed && st->g<=conf->g_max) || (!greenReversed && st->g>=conf->g_max))
+			{
+				compColAtMax=true;
+			}
+			else if((greenReversed && st->g>=conf->g_min) || (!greenReversed && st->g<=conf->g_min))
+			{
+				compColAtMin=true;
+			}
+		}
+		else if(conf->r_max != conf->r_min)	//red
+		{
+			if((redReversed && st->r<=conf->r_max) || (!redReversed && st->r>=conf->r_max))
+			{
+				compColAtMax=true;
+			}
+			else if((redReversed && st->r>=conf->r_min) || (!redReversed && st->r<=conf->r_min))
+			{
+				compColAtMin=true;
+			}
+		}
+		//Check if the fade is done. if so, mark this fade as done. Otherwise, update what is do be done at an extreme
+		if(st->fadeCycle && checkCycleCounter(&st->fadeCycle))
+		{
+			st->fadeDone=true;
+		}
+		else
+		{
+			switch (conf->mode)
+			{
+				case LEDSEG_MODE_BOUNCE:
+				{
+					if(compColAtMin)
+					{
+						st->fadeDir=1;
+					}
+					else if(compColAtMax)
+					{
+						st->fadeDir=-1;
+					}
+					break;
+				}
+				//Loop and Loop_end works the same
+				case LEDSEG_MODE_LOOP:
+				case LEDSEG_MODE_LOOP_END:
+				{
+					if(compColAtMin)
+					{
+						st->r=conf->r_max;
+						st->g=conf->g_max;
+						st->b=conf->b_max;
+					}
+					else if(compColAtMax)
+					{
+						st->r=conf->r_min;
+						st->g=conf->g_min;
+						st->b=conf->b_min;
+					}
+					break;
+				}
+				default:
+				{
+					//For any other mode, do nothing
+					break;
+				}
+			}
 		}
 	}
 }
