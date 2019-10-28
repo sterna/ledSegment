@@ -209,6 +209,7 @@ bool ledSegSetFade(uint8_t seg, ledSegmentFadeSetting_t* fs)
 		//fd->globalSetting = APA_MAX_GLOBAL_SETTING+1;
 	}
 	st->fadeActive = true;
+	st->fadeDone=false;
 
 	return true;
 }
@@ -390,6 +391,18 @@ bool ledSegGetFadeActiveState(uint8_t seg)
 		return false;
 	}
 	return segments[seg].state.fadeActive;
+}
+
+/*
+ * Returns true if the set fade animation is done
+ */
+bool ledSegGetFadeDone(uint8_t seg)
+{
+	if(!ledSegExists(seg))
+	{
+		return false;
+	}
+	return segments[seg].state.fadeDone;
 }
 
 /*
