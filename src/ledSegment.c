@@ -38,16 +38,57 @@
  *	- Use only pulse on a segment:
  *		Set max of all colours of fade=0
  *
- *	New mode: Glitter mode. Runs instead of a pulse.
  *
- *	Instead of a wandering pulse, it will light up a number of LEDs in random places in the whole strip.
- *	It has the same modes as regular pulse (loop, loop_end and Bounce):
- *		Loop: A number of glitter points appears from 0 up until a set number. Then it restarts from 0.
- *		Loop_end: Same as loop, but will end when the set number is reached
- *		Bounce: Same as loop, but when the top number is reached, the number instead goes down to 0.
- *	On top of these modes, glitter points can either be persistent or updating.
+ *	New mode: Glitter mode. Runs instead of a pulse. Will be painted on a fade, without any regard to the fade setting.
+ *	Instead of a wandering pulse, it will light up a number of LEDs in random places in the whole strip, each specified cycle.
+ *
+ *	Glitter has a couple of main settings to use:
+ *		- RGBmax (set by pulse RGBMax). This describes the end colour for the glitter points. Glitter points always start from RGB=000;
+ *		- Number of persistent glitter points (set by pulse ledsMaxPower). These are the number of saved glitter points.
+ *		- Number of glitter points to be updated at the time (set by pulse ledsFadeBefore). These are the number of glitter points being faded from 0 to max.
+ *		- (This means that the total number of glitter points are ledsMaxPower+ledsFadeBefore)
+ *		- Glitter fade time (set by pixelTime in ms). The time it will take for all fade LEDs to reach max. It is also the cycle time.
+ *			Should be a multiple of LEDSEG_UPDATE_PERIOD_TIME)
+ *
+ *	Glitter can use the following modes. All modes light up points according to the settings until it reaches max. The mode then decides what happens:
+ *		Loop: At max, it puts all those points out and restarts from 0.
+ *		Loop_end: At max, it stops, persisting all lit points.
+ *		Loop_persist (new mode): At max, it adds new LEDs every cycle, replacing the oldest ones.
+ *		Bounce (implemented because it seems annoying): Like normal bounce, but works with adding/removing LEDs as the direction.
  *
  *
+ *	Ideer på hur vi ska göra för glitter:
+ *	Varje led bör köra lite fade (för att det ska se fint ut :3)
+ *	Setup av segment (utöver det andra)
+ *		Sätt upp en ringbuffer (Malloc) med det antalet LEDsen som ska vara. Ringbuffern innehåller numret på LEDen som är tänd i glittret
+ *		Om antalet LEDs i segmenetet är fler än 255, allokera uint16_t, annars allokera uint8_t
+ *
+ *	Setup av glitter
+ *
+ *	Glitter info som behövs
+ *		Antalet LEDs i glitter (setup)
+ *		Antalet LEDs som ska köra fade samtidigt.
+ *		R,G,B max (setup)
+ *		Fade-tid (tid från 0 till max) (setup).
+ *
+ *		Haka på pulse settings:
+ *		RGB=RGBMax in pulse;
+ *		FadeTid ges av pixelTime i millisekunder (upp till 65535, vilket borde var OK)
+ *		Vid setup räknas pixelTime om till att innebära antalet LED_UPDATE_CYCLES till
+ *
+ *		Rate=Max/nofCyclesToMax;
+ *		col+=rate;
+ *
+ *		Använd pulse infon kanske?
+ *	En cykel är som följer:
+ *	1. Börja på LEDen som pekas ut av antalet samtidigt fadeande LEDs och gå igenom ringbuffern sätt alla LEDs som ligger på fullt
+ *	2. Uppdatera fade på alla LEDs som ska köras fade på.
+ *	3. Om fade har nått slutet, lägg till ett antal random LEDs till först i buffern.
+ *		3.1 Om vi inte är nåt kontinuerligt läge, kolla om vi har fyllt buffern. I så fall är vi klara.
+ *
+ *	Att lägga till i statemaskinen:
+ *		Glitter fade state (current RGB)
+ *		Active LEDs (list of the numbers of LEDs that are active in glitter)
  */
 
 #include "ledSegment.h"

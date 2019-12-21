@@ -40,15 +40,15 @@ typedef struct
 {
 	ledSegmentMode_t mode;	//The current mode for this pulse
 
-	uint8_t r_max;		//Pulse max colour
-	uint8_t g_max;		//Pulse max colour
-	uint8_t b_max;		//Pulse max colour
+	uint8_t r_max;			//Pulse max colour
+	uint8_t g_max;			//Pulse max colour
+	uint8_t b_max;			//Pulse max colour
 
 	//Number of LEDs in the pulse. The total number of lit LEDs in a pulse is the sum of all these.
-	uint16_t ledsMaxPower;		//The number of LEDs that shall be the middle of the pulse (the number of LEDs using max power)
-	uint16_t ledsFadeBefore;	//The number of LEDs to be faded before the max LED segment start
-	uint16_t ledsFadeAfter;		//The number of LEDs to be faded after the max LED segment end
-	uint16_t startLed;			//The LED to start with. If larger than the total LEDs in the segment, it will start from the top
+	uint16_t ledsMaxPower;			//The number of LEDs that shall be the middle of the pulse (the number of LEDs using max power)
+	uint16_t ledsFadeBefore;		//The number of LEDs to be faded before the max LED segment start
+	uint16_t ledsFadeAfter;			//The number of LEDs to be faded after the max LED segment end
+	uint16_t startLed;				//The LED to start with. If larger than the total LEDs in the segment, it will start from the top
 
 	int8_t startDir;				//The direction we shall start in (+1 or -1)
 	uint16_t pixelsPerIteration;	//The number of pixels the pulse shall move per iteration
@@ -85,27 +85,38 @@ typedef struct
  */
 typedef struct
 {
-	//These are used for the fade setting
+	//Fade state
+	//Current colour for the LED strip fade
 	uint8_t r;
 	uint8_t g;
 	uint8_t b;
-	//The increase/decrease each iteration
+	//The increase/decrease each iteration of fade
 	uint8_t r_rate;
 	uint8_t g_rate;
 	uint8_t b_rate;
-	int8_t fadeDir;				//The current direction of fade
 
-	int8_t pulseDir;				//The wander direction for the LED
-	uint16_t currentLed;			//The current first LED in the pulse (the most faded LED before the start of max). Current LED is absolute relative to the strip
-	uint16_t cyclesToPulseMove;		//The number of cycles left to pulse movement
-	uint16_t cyclesToFadeChange;	//The number of cycles left to fade update (used to emulate fractional rates). This does not need to be set
-	uint32_t pulseCycle;			//The current cycle of the animation
-	uint32_t fadeCycle;				//The current cycle of the animation (strictly speaking, this is number of updates left (one cycleFade is much smaller than a setting cycle
-	bool fadeActive;				//Indicates if the strip has an active fade
-	bool fadeDone;				//Indicates if the fade has completed it's cycles, but that fade color shall remain unchanged
-	bool pulseActive;				//Indicates if the strip has an active pulse
+	int8_t fadeDir;						//The current direction of fade
+	uint16_t cyclesToFadeChange;		//The number of cycles left to fade update (used to emulate fractional rates). This does not need to be set
+	bool fadeActive;					//Indicates if the strip has an active fade
+	bool fadeDone;						//Indicates if the fade has completed it's cycles, but that fade color shall remain unchanged
+	ledSegmentFadeSetting_t confFade;	//All information about the fade
+	uint32_t fadeCycle;					//The current cycle of the animation (strictly speaking, this is number of updates left (one cycleFade is much smaller than a setting cycle)
+
+	//Pulse state
+	int8_t pulseDir;					//The wander direction for the LED
+	uint16_t currentLed;				//The current first LED in the pulse (the most faded LED before the start of max). Current LED is absolute relative to the strip
+	uint16_t cyclesToPulseMove;			//The number of cycles left to pulse movement
+	uint32_t pulseCycle;				//The current cycle of the animation
+	bool pulseActive;					//Indicates if the strip has an active pulse
 	ledSegmentPulseSetting_t confPulse;	//All information about the pulse
-	ledSegmentFadeSetting_t confFade;		//All information about the fade
+
+	//Glitter specific state
+	//State of the glitter colour
+	uint8_t glitterR;
+	uint8_t glitterG;
+	uint8_t glitterB;
+	uint16_t* glitterActiveLeds;		//The numbers (indexed within strip) of the LEDs active in glitter
+
 
 }ledSegmentState_t;
 
