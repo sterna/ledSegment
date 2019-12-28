@@ -42,13 +42,21 @@
  *	New mode: Glitter mode. Runs instead of a pulse. Will be painted on a fade, without any regard to the fade setting.
  *	Instead of a wandering pulse, it will light up a number of LEDs in random places in the whole strip, each specified cycle.
  *
- *	Glitter has a couple of main settings to use:
+ *	Glitter has a couple of main settings different from the standard settings to use:
  *		- RGBmax (set by pulse RGBMax). This describes the end colour for the glitter points. Glitter points always start from RGB=000;
  *		- Number of persistent glitter points (set by pulse ledsMaxPower). These are the number of saved glitter points.
- *		- Number of glitter points to be updated at the time (set by pulse ledsFadeBefore). These are the number of glitter points being faded from 0 to max.
+ *		- Number of glitter points to be updated at the time (set by pulse pixelsPerIteration). These are the number of glitter points being faded from 0 to max. This is called the "glitter subset"
  *		- (This means that the total number of glitter points are ledsMaxPower+ledsFadeBefore)
- *		- Glitter fade time (set by pixelTime in ms). The time it will take for all fade LEDs to reach max. It is also the cycle time.
- *			Should be a multiple of LEDSEG_UPDATE_PERIOD_TIME)
+ *		- Glitter fade time (set by pixelTime in ms). The time it will take for all fade LEDs (that is, all persistant LEDs) to reach max. It is also the cycle time.
+ *			This means that each glitter subset will take pixelTime*pixelsPerIteration/ledsMaxpower
+ *			pixelTime should be a multiple of LEDSEG_UPDATE_PERIOD_TIME
+ *	Apart from these, the following settings are also used:
+ *		- Mode. Sets which mode we're using (like before)
+ *		- Start dir. (Will be added later. Set by startDir). The direction to start with
+ *		- Number of cycles (set by cycles). One cycle is defined as when all ledsMaxPower have been lit.
+ *		- GlobalSetting. Same as before
+ *	The other settings are not used and can be omitted.
+ *
  *
  *	Glitter can use the following modes. All modes light up points according to the settings until it reaches max. The mode then decides what happens:
  *		Loop: At max, it puts all those points out and restarts from 0.
@@ -57,11 +65,15 @@
  *		Bounce (implemented because it seems annoying): Like normal bounce, but works with adding/removing LEDs as the direction.
  *
  *
+ *	Glitter - each cycle (with info needed)
+ *		Count down cyclesToPulseMove. If trigger cycle:
+ *		Update fade colour. If fade is done (>=RGBMax), reset colour state, add new
+ *		Start in the ringbuffer from the currentLed (which is index0+pixelsPerIteration). Set all LEDs from this index until end of ringbuffer to maxRGB
+ *
  *	Ideer på hur vi ska göra för glitter:
  *	Varje led bör köra lite fade (för att det ska se fint ut :3)
  *	Setup av segment (utöver det andra)
  *		Sätt upp en ringbuffer (Malloc) med det antalet LEDsen som ska vara. Ringbuffern innehåller numret på LEDen som är tänd i glittret
- *		Om antalet LEDs i segmenetet är fler än 255, allokera uint16_t, annars allokera uint8_t
  *
  *	Setup av glitter
  *
@@ -89,9 +101,11 @@
  *	Att lägga till i statemaskinen:
  *		Glitter fade state (current RGB)
  *		Active LEDs (list of the numbers of LEDs that are active in glitter)
+ *
  */
 
 #include "ledSegment.h"
+#include "stdlib.h"
 
 //-----------Internal variables--------//
 //Contains all information for all virtual LED segments
@@ -105,6 +119,7 @@ static uint8_t pulseCalcColourPerLed(ledSegmentState_t* st,uint16_t led, colour_
 static void pulseCalcAndSet(uint8_t seg);
 static bool checkCycleCounter(uint32_t* cycle);
 static bool checkCycleCounterU16(uint16_t* cycle);
+static bool isGlitterMode(ledSegmentMode_t mode);
 
 /*
  * Inits an LED segment
@@ -275,25 +290,48 @@ bool ledSegSetPulse(uint8_t seg, ledSegmentPulseSetting_t* ps)
 	//Copy new setting into state
 	memcpy(pu,ps,sizeof(ledSegmentPulseSetting_t));
 	st->pulseDir=ps->startDir;
-	//Check if start led is in the segment
-	ps->startLed += (sg->start-1);
-	st->currentLed = ps->startLed;
-	if(st->currentLed > sg->stop)
-	{
-		st->currentLed = sg->stop;
-	}
-	else if(st->currentLed < sg->start)
-	{
-		st->currentLed = sg->start;
-	}
 	st->pulseActive = true;
-	st->cyclesToPulseMove = ps->pixelTime;
+	if(isGlitterMode(ps->mode))
+	{
+		//Allocate memory for the ring buffer.
+		free(st->glitterActiveLeds);	//Remove old buffer
+		st->glitterActiveLeds = (uint16_t*)calloc(pu->ledsMaxPower+pu->pixelsPerIteration,sizeof(uint16_t));	//Allocate new buffer
+		st->currentLed=0;	//currentLed is used as index in the ringbuffer.
+
+		//For glitter mode, pixelTime setting is the total time for fade of all the glitter pixels together.
+		//Therefore, we calculate the number of LEDSEG_UPDATE_PERIOD_TIME-cycles is needed for each glitter subsegment
+		//(GCC will probably optimize this)
+		uint32_t pixelTimeTemp=0;
+		pixelTimeTemp=pu->pixelTime/LEDSEG_UPDATE_PERIOD_TIME;	//Total number of update periods for all glitter points (until the whole cycle is done)
+		pixelTimeTemp=pixelTimeTemp*pu->pixelsPerIteration/pu->ledsMaxPower;	//The time it will take for each cycle to fade completely from 0 to max
+		if(pixelTimeTemp==0)
+		{
+			pixelTimeTemp=1;
+		}
+		pu->pixelTime=pixelTimeTemp;
+		st->cyclesToPulseMove=1;	//So that we get LEDs from the beginning
+	}
+	else
+	{
+		//Check if start led is in the segment
+		pu->startLed += (sg->start-1);
+		st->currentLed = pu->startLed;
+		if(st->currentLed > sg->stop)
+		{
+			st->currentLed = sg->stop;
+		}
+		else if(st->currentLed < sg->start)
+		{
+			st->currentLed = sg->start;
+		}
+		st->cyclesToPulseMove = pu->pixelTime;
+	}
 	//If the global setting is not used (set to 0) the default global will be loaded dynamically from the current global
 	if(pu->globalSetting == 0)
 	{
 		//pu->globalSetting = APA_MAX_GLOBAL_SETTING+1;
 	}
-
+	st->pulseDone=false;
 	return true;
 }
 
@@ -385,6 +423,26 @@ bool ledSegSetLed(uint8_t seg, uint16_t led, uint8_t r, uint8_t g, uint8_t b)
 }
 
 /*
+ * Sets a single LED within a segment to a colour
+ * The LED is counted from the first LED in the segment (if LED=1, the start will be set)
+ * If the LED is out of bounds for the strip, the function will return false
+ * Will be overriden by any fade or pulse setting
+ */
+bool ledSegSetLedWithGlobal(uint8_t seg, uint16_t led, uint8_t r, uint8_t g, uint8_t b,uint8_t global)
+{
+	if(!ledSegExists(seg))
+	{
+		return false;
+	}
+	if(led==0 || led>(segments[seg].stop-segments[seg].start+1))
+	{
+		return false;
+	}
+	apa102SetPixelWithGlobal(segments[seg].strip,segments[seg].start+led-1,r,g,b,global,true);
+	return true;
+}
+
+/*
  * Sets the pulse active state to a new value. Useful for pausing an animation
  */
 bool ledSegSetPulseActiveState(uint8_t seg, bool state)
@@ -447,6 +505,18 @@ bool ledSegGetFadeDone(uint8_t seg)
 }
 
 /*
+ * Returns true if the set pulse animation is done
+ */
+bool ledSegGetPulseDone(uint8_t seg)
+{
+	if(!ledSegExists(seg))
+	{
+		return false;
+	}
+	return segments[seg].state.pulseDone;
+}
+
+/*
  * The the pulse speed by setting the pixel time and the pixelsPerIteration
  * If value is 0, the existing value is used
  * This will take effect immediately
@@ -499,6 +569,7 @@ bool ledSegRestart(uint8_t seg, bool restartFade, bool restartPulse)
 	}
 	if(restartPulse)
 	{
+		st->pulseDone=false;
 		if(st->confPulse.startDir == 1)
 		{
 			st->currentLed = segments[seg].start;
@@ -508,6 +579,11 @@ bool ledSegRestart(uint8_t seg, bool restartFade, bool restartPulse)
 		{
 			st->currentLed = segments[seg].stop;
 			st->pulseDir = -1;
+		}
+		if(isGlitterMode(st->confPulse.mode))
+		{
+			//Todo: Add handling for bounce
+			st->currentLed=0;
 		}
 	}
 	return true;
@@ -696,7 +772,7 @@ static void pulseCalcAndSet(uint8_t seg)
 	stop=segments[seg].stop;
 	strip=segments[seg].strip;
 	pulseLength=ps->ledsFadeAfter+ps->ledsFadeBefore+ps->ledsMaxPower;
-
+	uint16_t glitterTotal=ps->ledsMaxPower+ps->pixelsPerIteration;
 	//Move LED and update direction
 	//Check if it's time to move a pixel
 	if(checkCycleCounterU16(&st->cyclesToPulseMove))
@@ -714,46 +790,85 @@ static void pulseCalcAndSet(uint8_t seg)
 		{
 			st->currentLed =st->currentLed+ps->pixelsPerIteration*st->pulseDir;
 		}
-		else
+		else if(isGlitterMode(ps->mode))
 		{
-			//Invalid mode, fail silently
-			return;
-		}
-		st->cyclesToPulseMove = ps->pixelTime;
-	}
-	//Set colour for all LEDs in pulse
-	for(uint16_t i=0;i<pulseLength;i++)
-	{
-		//Generate where the LED shall be
-		int16_t tmpLedNum=0;
-		if(ps->mode == LEDSEG_MODE_BOUNCE)
-		{
-			tmpLedNum=utilBounceValue(st->currentLed,i*st->pulseDir*-1,start,stop,NULL);
-		}
-		else if(ps->mode == LEDSEG_MODE_LOOP)
-		{
-			tmpLedNum=utilLoopValue(st->currentLed,i*st->pulseDir*-1,start,stop);
-		}
-		else if(ps->mode == LEDSEG_MODE_LOOP_END)
-		{
-			tmpLedNum = st->currentLed+i*st->pulseDir*-1;
-			if(i>=(pulseLength-1))
+			//If fade is not active, make sure to clear all LEDs (which is what the fade would have done)
+			if(!st->fadeActive)
 			{
-				if(st->pulseDir==1 && tmpLedNum>stop)//Loop was finished, move currentLed to edge for next loop
+				for(uint16_t i=0;i<glitterTotal;i++)
 				{
-					st->currentLed = start;
-					if(checkCycleCounter(&st->pulseCycle))
+					ledSegSetLedWithGlobal(seg,st->glitterActiveLeds[i],0,0,0,ps->globalSetting);
+				}
+			}
+			/*
+			 * Bounce (implemented because it seems annoying): Like normal bounce, but works with adding/removing LEDs as the direction.
+			 */
+			//For glitter mode, we will generate new LEDs now
+			//Here, we also check what we need to do based on mode.
+			if(st->currentLed>=glitterTotal)
+			{
+				if(ps->mode==LEDSEG_MODE_GLITTER_LOOP)
+				{
+					memset(st->glitterActiveLeds,0,glitterTotal*sizeof(uint16_t));
+					st->currentLed=0;
+				}
+				else if(ps->mode == LEDSEG_MODE_GLITTER_LOOP_END)
+				{
+					st->currentLed=glitterTotal;
+					st->pulseDone=true;
+				}
+			}
+			//This will handle LEDSEG_MODE_GLITTER_LOOP_END (and also other unforeseen things)
+			if(st->currentLed<glitterTotal)
+			{
+				for(uint16_t i=0;i<ps->pixelsPerIteration;i++)
+				{
+					//Todo: This method might generate LEDs that are already lit. To avoid this, we would need to look through the entire buffer for each new LED. Sorting might help here
+					//Generate a random LED
+					if(st->pulseDir==-1)
 					{
-						st->pulseActive = false;
+						st->glitterActiveLeds[st->currentLed]=0;	//Clear the current LED if direction is down
+					}
+					else
+					{
+						st->glitterActiveLeds[st->currentLed]=utilRandRange(stop-start)+1;	//We will skip LED 0 in the segment
+					}
+					if(st->pulseDir==-1 && st->currentLed==0)
+					{
+						st->currentLed=1;
+					}
+					st->currentLed+=st->pulseDir;
+					if(st->currentLed>=glitterTotal)
+					{
+						//In loop_persist, we will restart the ring buffer from 0
+						if(ps->mode == LEDSEG_MODE_GLITTER_LOOP_PERSIST)
+						{
+							st->currentLed=0;
+						}
+						else if(ps->mode==LEDSEG_MODE_GLITTER_BOUNCE)
+						{
+							st->currentLed=glitterTotal-1;
+							st->pulseDir=-1;
+							break;
+							//TODO: SOMETHING IS NOT QUITE WORKING WITH GLITTER_BOUNCE
+						}
+						else	//For LEDSEG_MODE_GLITTER
+						{
+							st->currentLed=glitterTotal;
+							break;
+						}
+					}
+					else if(st->currentLed==0 && ps->mode==LEDSEG_MODE_GLITTER_BOUNCE)
+					{
+						st->pulseDir=1;
 					}
 				}
-				else if(st->pulseDir == -1 && tmpLedNum<start)
+				if(!(ps->mode == LEDSEG_MODE_GLITTER_BOUNCE && st->pulseDir==-1))
 				{
-					st->currentLed = stop;
-					if(checkCycleCounter(&st->pulseCycle))
-					{
-						st->pulseActive = false;
-					}
+					//Reset fade colour to 0, to start a new fade cycle
+					st->glitterR=0;
+					st->glitterG=0;
+					st->glitterB=0;
 				}
 			}
 		}
@@ -762,13 +877,112 @@ static void pulseCalcAndSet(uint8_t seg)
 			//Invalid mode, fail silently
 			return;
 		}
-		//Calculate colours and write LED
-		if(tmpLedNum>=start && tmpLedNum<=stop)
+		st->cyclesToPulseMove = ps->pixelTime;
+
+	}
+	//Glitter mode:
+	if(isGlitterMode(ps->mode))
+	{
+		//Update colour
+		//Todo: consider if we want to introduce direction in some way
+		st->glitterR=utilIncWithDir(st->glitterR,st->pulseDir,ps->r_max/ps->pixelTime,0,ps->r_max);
+		st->glitterG=utilIncWithDir(st->glitterG,st->pulseDir,ps->g_max/ps->pixelTime,0,ps->g_max);
+		st->glitterB=utilIncWithDir(st->glitterB,st->pulseDir,ps->b_max/ps->pixelTime,0,ps->b_max);
+
+		//Load the current index of the ring buffer
+		uint16_t currentIndex=st->currentLed;
+		//This will only be false in a mode
+		if(currentIndex<glitterTotal)
 		{
-			tmpR=pulseCalcColourPerLed(st,i+1,COL_RED);
-			tmpG=pulseCalcColourPerLed(st,i+1,COL_GREEN);
-			tmpB=pulseCalcColourPerLed(st,i+1,COL_BLUE);
-			apa102SetPixelWithGlobal(strip,tmpLedNum,tmpR,tmpG,tmpB,ps->globalSetting,true);
+			//Go through the ring buffer in reverse, setting all fade LEDs to the proper colour
+			for(uint16_t i=0;i<ps->pixelsPerIteration;i++)
+			{
+				if(currentIndex>0)
+				{
+					currentIndex--;
+				}
+				else
+				{
+					currentIndex=glitterTotal-1;
+				}
+				ledSegSetLedWithGlobal(seg,st->glitterActiveLeds[currentIndex],st->glitterR,st->glitterG,st->glitterB,ps->globalSetting);
+			}
+		}
+		//Traverse the buffer in reverse from the point stopped
+		for(uint16_t i=0;i<ps->ledsMaxPower;i++)
+		{
+			if(currentIndex>0)
+			{
+				currentIndex--;
+			}
+			else
+			{
+				currentIndex=glitterTotal-1;
+			}
+			//An LED with number 0 indicates that this is something we have not handled yet
+			if(st->glitterActiveLeds[currentIndex]==0)
+			{
+				break;
+			}
+			ledSegSetLedWithGlobal(seg,st->glitterActiveLeds[currentIndex],ps->r_max,ps->g_max,ps->b_max,ps->globalSetting);
+		}
+			//Once currentLED is reached, set all the rest LEDs until a 0 is encountered or we have set LEDs up to ledsMaxPower
+			//Restart the ringbuffer accordingly, if needed
+			//=st->glitterActiveLeds[currentIndex];
+	}
+	else	//Some pulse mode
+	{
+		//Set colour for all LEDs in pulse
+		for(uint16_t i=0;i<pulseLength;i++)
+		{
+			//Generate where the LED shall be
+			int16_t tmpLedNum=0;
+			if(ps->mode == LEDSEG_MODE_BOUNCE)
+			{
+				tmpLedNum=utilBounceValue(st->currentLed,i*st->pulseDir*-1,start,stop,NULL);
+			}
+			else if(ps->mode == LEDSEG_MODE_LOOP)
+			{
+				tmpLedNum=utilLoopValue(st->currentLed,i*st->pulseDir*-1,start,stop);
+			}
+			else if(ps->mode == LEDSEG_MODE_LOOP_END)
+			{
+				tmpLedNum = st->currentLed+i*st->pulseDir*-1;
+				if(i>=(pulseLength-1))
+				{
+					if(st->pulseDir==1 && tmpLedNum>stop)//Loop was finished, move currentLed to edge for next loop
+					{
+						st->currentLed = start;
+						if(checkCycleCounter(&st->pulseCycle))
+						{
+							st->pulseDone = true;
+							st->pulseActive = false;
+						}
+					}
+					else if(st->pulseDir == -1 && tmpLedNum<start)
+					{
+						st->currentLed = stop;
+						if(checkCycleCounter(&st->pulseCycle))
+						{
+							st->pulseDone = true;
+							st->pulseActive = false;
+						}
+					}
+				}
+			}
+			else
+			{
+				//Invalid mode, fail silently
+				return;
+			}
+			//Calculate colours and write LED
+			if(tmpLedNum>=start && tmpLedNum<=stop)
+			{
+				tmpR=pulseCalcColourPerLed(st,i+1,COL_RED);
+				tmpG=pulseCalcColourPerLed(st,i+1,COL_GREEN);
+				tmpB=pulseCalcColourPerLed(st,i+1,COL_BLUE);
+				apa102SetPixelWithGlobal(strip,tmpLedNum,tmpR,tmpG,tmpB,ps->globalSetting,true);
+			}
 		}
 	}
 }
@@ -962,3 +1176,19 @@ static void fadeCalcColour(uint8_t seg)
 		}
 	}
 }
+
+/*
+ * Tells if a mode is a glitter mode
+ */
+static bool isGlitterMode(ledSegmentMode_t mode)
+{
+	if(mode>=LEDSEG_MODE_GLITTER_LOOP && mode<=LEDSEG_MODE_GLITTER_BOUNCE)
+	{
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+}
+

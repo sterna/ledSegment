@@ -16,7 +16,7 @@
 //Without some library rewriting, this value cannot be larger than 254
 #define LEDSEG_MAX_SEGMENTS	30
 //The time between each full strip update (in ms)
-#define LEDSEG_UPDATE_PERIOD_TIME 25
+#define LEDSEG_UPDATE_PERIOD_TIME 20
 //The number of calculation sub-cycles per update period
 #define LEDSEG_CALCULATION_CYCLES 4
 
@@ -30,6 +30,10 @@ typedef enum
 	LEDSEG_MODE_LOOP_END,
 	LEDSEG_MODE_BOUNCE,
 	LEDSEG_MODE_TIMED_PULSE,
+	LEDSEG_MODE_GLITTER_LOOP,
+	LEDSEG_MODE_GLITTER_LOOP_END,
+	LEDSEG_MODE_GLITTER_LOOP_PERSIST,
+	LEDSEG_MODE_GLITTER_BOUNCE,
 	LEDSEG_MODE_NOF_MODES
 }ledSegmentMode_t;
 
@@ -105,9 +109,10 @@ typedef struct
 	//Pulse state
 	int8_t pulseDir;					//The wander direction for the LED
 	uint16_t currentLed;				//The current first LED in the pulse (the most faded LED before the start of max). Current LED is absolute relative to the strip
-	uint16_t cyclesToPulseMove;			//The number of cycles left to pulse movement
+	uint16_t cyclesToPulseMove;			//The number of cycles left to pulse movement. For glitter mode, this is the number of cycles until the fade for each subsegment is done
 	uint32_t pulseCycle;				//The current cycle of the animation
 	bool pulseActive;					//Indicates if the strip has an active pulse
+	bool pulseDone;						//Indicates if the pulse has completed it's cycles, but that fade color shall remain unchanged
 	ledSegmentPulseSetting_t confPulse;	//All information about the pulse
 
 	//Glitter specific state
@@ -141,6 +146,7 @@ void ledSegRunIteration();
 bool ledSegSetFadeMode(uint8_t seg, ledSegmentMode_t mode);
 bool ledSegSetPulseMode(uint8_t seg, ledSegmentMode_t mode);
 bool ledSegSetLed(uint8_t seg, uint16_t led, uint8_t r, uint8_t g, uint8_t b);
+bool ledSegSetLedWithGlobal(uint8_t seg, uint16_t led, uint8_t r, uint8_t g, uint8_t b,uint8_t global);
 
 bool ledSegGetState(uint8_t seg, ledSegment_t* state);
 bool ledSegGetPulseActiveState(uint8_t seg);
@@ -148,6 +154,7 @@ bool ledSegSetPulseActiveState(uint8_t seg, bool state);
 bool ledSegGetFadeActiveState(uint8_t seg);
 bool ledSegSetFadeActiveState(uint8_t seg, bool state);
 bool ledSegGetFadeDone(uint8_t seg);
+bool ledSegGetPulseDone(uint8_t seg);
 bool ledSegClearFade(uint8_t seg);
 bool ledSegClearPulse(uint8_t seg);
 bool ledSegSetGlobal(uint8_t seg, uint8_t fadeGlobal, uint8_t pulseGlobal);
