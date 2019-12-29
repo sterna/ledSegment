@@ -850,7 +850,6 @@ static void pulseCalcAndSet(uint8_t seg)
 							st->currentLed=glitterTotal-1;
 							st->pulseDir=-1;
 							break;
-							//TODO: SOMETHING IS NOT QUITE WORKING WITH GLITTER_BOUNCE
 						}
 						else	//For LEDSEG_MODE_GLITTER
 						{
@@ -863,7 +862,13 @@ static void pulseCalcAndSet(uint8_t seg)
 						st->pulseDir=1;
 					}
 				}
-				if(!(ps->mode == LEDSEG_MODE_GLITTER_BOUNCE && st->pulseDir==-1))
+				if(ps->mode == LEDSEG_MODE_GLITTER_BOUNCE && st->pulseDir==-1)
+				{
+					st->glitterR=ps->r_max;
+					st->glitterG=ps->g_max;
+					st->glitterB=ps->b_max;
+				}
+				else
 				{
 					//Reset fade colour to 0, to start a new fade cycle
 					st->glitterR=0;
