@@ -251,6 +251,10 @@ void apa102SetPixel(uint8_t strip, uint16_t pixel, uint8_t r, uint8_t g, uint8_t
  */
 void apa102SetDefaultGlobal(uint8_t global)
 {
+	if(global>APA_MAX_GLOBAL_SETTING)
+	{
+		global=APA_MAX_GLOBAL_SETTING;
+	}
 	defaultGlobal=APA_ADD_GLOBAL_BITS(global);
 }
 
