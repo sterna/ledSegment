@@ -26,14 +26,14 @@
  */
 typedef enum
 {
-	LEDSEG_MODE_LOOP=0,
-	LEDSEG_MODE_LOOP_END,
-	LEDSEG_MODE_BOUNCE,
-	LEDSEG_MODE_TIMED_PULSE,
-	LEDSEG_MODE_GLITTER_LOOP,
-	LEDSEG_MODE_GLITTER_LOOP_END,
-	LEDSEG_MODE_GLITTER_LOOP_PERSIST,
-	LEDSEG_MODE_GLITTER_BOUNCE,
+	LEDSEG_MODE_LOOP=0,					//Pulse starts over from the first (or last) LED in the segment
+	LEDSEG_MODE_LOOP_END,				//Pulse behaves the same as in Loop mode, but the whole pulse will disappear before re-appearing
+	LEDSEG_MODE_BOUNCE,					//Pulse will travel to the end of the segment, and then back to beginning, and then back to the end and loop like that
+	LEDSEG_MODE_TIMED_PULSE,			//Todo: Not implemented yet
+	LEDSEG_MODE_GLITTER_LOOP,			//Loop: At max, it puts all those points out and restarts from 0.
+	LEDSEG_MODE_GLITTER_LOOP_END,		//Loop_end: At max, it stops, persisting all lit points.
+	LEDSEG_MODE_GLITTER_LOOP_PERSIST,	//Loop_persist (new mode): At max, it adds new LEDs every cycle, replacing the oldest ones.
+	LEDSEG_MODE_GLITTER_BOUNCE,			//Bounce: Like normal bounce, but works with adding/removing LEDs as the direction.
 	LEDSEG_MODE_NOF_MODES
 }ledSegmentMode_t;
 

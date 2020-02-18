@@ -800,9 +800,6 @@ static void pulseCalcAndSet(uint8_t seg)
 					ledSegSetLedWithGlobal(seg,st->glitterActiveLeds[i],0,0,0,ps->globalSetting);
 				}
 			}
-			/*
-			 * Bounce (implemented because it seems annoying): Like normal bounce, but works with adding/removing LEDs as the direction.
-			 */
 			//For glitter mode, we will generate new LEDs now
 			//Here, we also check what we need to do based on mode.
 			if(st->currentLed>=glitterTotal)
