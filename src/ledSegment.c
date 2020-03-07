@@ -176,7 +176,7 @@ bool ledSegGetState(uint8_t seg, ledSegment_t* state)
  */
 bool ledSegExists(uint8_t seg)
 {
-	if(seg<currentNofSegments)
+	if(seg<currentNofSegments || seg==LEDSEG_ALL)
 	{
 		return true;
 	}
@@ -194,6 +194,13 @@ bool ledSegSetFade(uint8_t seg, ledSegmentFadeSetting_t* fs)
 	if(!ledSegExists(seg) || fs==NULL)
 	{
 		return false;
+	}
+	if(seg==LEDSEG_ALL)
+	{
+		for(uint8_t i=0;i<currentNofSegments;i++)
+		{
+			ledSegSetFade(i,fs);
+		}
 	}
 	//Create some temp variables that are easier to use
 	ledSegment_t* sg;
@@ -280,6 +287,13 @@ bool ledSegSetPulse(uint8_t seg, ledSegmentPulseSetting_t* ps)
 	{
 		return false;
 	}
+	if(seg==LEDSEG_ALL)
+	{
+		for(uint8_t i=0;i<currentNofSegments;i++)
+		{
+			ledSegSetPulse(i,ps);
+		}
+	}
 	//Create some temp variables that are easier to use
 	ledSegment_t* sg;
 	sg=&(segments[seg]);
@@ -344,6 +358,13 @@ bool ledSegClearFade(uint8_t seg)
 	{
 		return false;
 	}
+	if(seg==LEDSEG_ALL)
+	{
+		for(uint8_t i=0;i<currentNofSegments;i++)
+		{
+			ledSegClearFade(i);
+		}
+	}
 	ledSegment_t st;
 
 	ledSegGetState(seg,&st);
@@ -365,6 +386,13 @@ bool ledSegClearPulse(uint8_t seg)
 	{
 		return false;
 	}
+	if(seg==LEDSEG_ALL)
+	{
+		for(uint8_t i=0;i<currentNofSegments;i++)
+		{
+			ledSegClearPulse(i);
+		}
+	}
 	ledSegment_t st;
 
 	ledSegGetState(seg,&st);
@@ -384,6 +412,13 @@ bool ledSegSetFadeMode(uint8_t seg, ledSegmentMode_t mode)
 	{
 		return false;
 	}
+	if(seg==LEDSEG_ALL)
+	{
+		for(uint8_t i=0;i<currentNofSegments;i++)
+		{
+			ledSegSetFadeMode(i,mode);
+		}
+	}
 	segments[seg].state.confFade.mode=mode;
 	return true;
 }
@@ -397,6 +432,13 @@ bool ledSegSetPulseMode(uint8_t seg, ledSegmentMode_t mode)
 	if(!ledSegExists(seg))
 	{
 		return false;
+	}
+	if(seg==LEDSEG_ALL)
+	{
+		for(uint8_t i=0;i<currentNofSegments;i++)
+		{
+			ledSegSetPulseMode(i,mode);
+		}
 	}
 	segments[seg].state.confPulse.mode=mode;
 	return true;
@@ -451,6 +493,13 @@ bool ledSegSetPulseActiveState(uint8_t seg, bool state)
 	{
 		return false;
 	}
+	if(seg==LEDSEG_ALL)
+	{
+		for(uint8_t i=0;i<currentNofSegments;i++)
+		{
+			ledSegSetPulseActiveState(i,state);
+		}
+	}
 	segments[seg].state.pulseActive=state;
 	return true;
 }
@@ -475,6 +524,13 @@ bool ledSegSetFadeActiveState(uint8_t seg, bool state)
 	if(!ledSegExists(seg))
 	{
 		return false;
+	}
+	if(seg==LEDSEG_ALL)
+	{
+		for(uint8_t i=0;i<currentNofSegments;i++)
+		{
+			ledSegSetFadeActiveState(i,state);
+		}
 	}
 	segments[seg].state.fadeActive=state;
 	return true;
@@ -547,6 +603,13 @@ bool ledSegRestart(uint8_t seg, bool restartFade, bool restartPulse)
 	{
 		return false;
 	}
+	if(seg==LEDSEG_ALL)
+	{
+		for(uint8_t i=0;i<currentNofSegments;i++)
+		{
+			ledSegRestart(i,restartFade,restartPulse);
+		}
+	}
 	ledSegmentState_t* st=&segments[seg].state;
 	if(restartFade)
 	{
@@ -598,6 +661,13 @@ bool ledSegSetGlobal(uint8_t seg, uint8_t fadeGlobal, uint8_t pulseGlobal)
 	if(!ledSegExists(seg))
 	{
 		return false;
+	}
+	if(seg==LEDSEG_ALL)
+	{
+		for(uint8_t i=0;i<currentNofSegments;i++)
+		{
+			ledSegSetGlobal(i,fadeGlobal,pulseGlobal);
+		}
 	}
 	segments[seg].state.confFade.globalSetting=fadeGlobal;
 	segments[seg].state.confPulse.globalSetting=pulseGlobal;

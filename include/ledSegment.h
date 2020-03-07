@@ -15,6 +15,8 @@
 //The maximum number of LED segments allowed (each segment costs almost 100 byte of RAM)
 //Without some library rewriting, this value cannot be larger than 254
 #define LEDSEG_MAX_SEGMENTS	30
+//Use this to perform the action on all segments
+#define LEDSEG_ALL	255
 //The time between each full strip update (in ms)
 #define LEDSEG_UPDATE_PERIOD_TIME 20
 //The number of calculation sub-cycles per update period
