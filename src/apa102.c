@@ -6,14 +6,9 @@
  *
  *	Low-level driver for apa102.
  *	Contains a model for a the LEDs, as a single strip
- *	SPI1 pins are:
- *	MOSI: PA7
- *	SCK: PA5
  */
 
 #include "apa102.h"
-
-//Add some dummy comment here (to be removed...)
 
 /*
  * A union to convert the apa102Pixel struct to uint32_t
@@ -37,13 +32,16 @@ static bool newData[APA_NOF_STRIPS];
 static uint8_t defaultGlobal=APA_ADD_GLOBAL_BITS(APA_MAX_GLOBAL_SETTING);
 //Indicates if the DMA is currently transmitting
 static volatile bool DMABusy[APA_NOF_STRIPS];
+//Information on what pixels shall be colour scaled
+static const apa102ScaleSegment_t pixelsCorrs[APA_NOF_STRIPS][APA_SCALE_MAX_SEGMENTS]=APA_SCALE_ASSIGN;
 
 /* ---- Internal functions ---- */
 //Returns true if the pixel is a valid pixel (if it is active in a strip)
 static bool isValidStrip(uint8_t strip);
 //Return true if the pixel already has this colour
 static bool pixelNeedsUpdate(uint8_t strip, uint16_t pixel,uint8_t r, uint8_t g, uint8_t b);
-
+//Provides the pixel scaling for a given pixel in a given strip
+static bool getPixelScaling(uint8_t strip, uint16_t pixel, RGB_t* factors);
 
 /*
  * Inits an apa102 strip
@@ -237,6 +235,13 @@ void apa102SetPixel(uint8_t strip, uint16_t pixel, uint8_t r, uint8_t g, uint8_t
 	{
 		return;
 	}
+	RGB_t tmpScale;
+	if(getPixelScaling(strip,pixel,&tmpScale))
+	{
+		r=(uint16_t)((r*tmpScale.r)/APA_SCALE_MAX);
+		g=(uint16_t)((g*tmpScale.g)/APA_SCALE_MAX);
+		b=(uint16_t)((b*tmpScale.b)/APA_SCALE_MAX);
+	}
 	strip--;
 	pixels[strip][pixel].r=r;
 	pixels[strip][pixel].g=g;
@@ -275,6 +280,13 @@ void apa102SetPixelWithGlobal(uint8_t strip, uint16_t pixel, uint8_t r, uint8_t 
 	if(!force && pixelNeedsUpdate(strip,pixel,r,g,b))
 	{
 		return;
+	}
+	RGB_t tmpScale;
+	if(getPixelScaling(strip,pixel,&tmpScale))
+	{
+		r=(uint32_t)((r*tmpScale.r)/APA_SCALE_MAX);
+		g=(uint32_t)((g*tmpScale.g)/APA_SCALE_MAX);
+		b=(uint32_t)((b*tmpScale.b)/APA_SCALE_MAX);
 	}
 	strip--;
 	pixels[strip][pixel].r=r;
@@ -483,6 +495,8 @@ bool apa102IsValidPixel(uint8_t strip, uint16_t pixel)
 	return true;
 }
 
+//------------------ Internal functions --------------------- //
+
 /*
  * Checks if the strip is valid
  */
@@ -513,6 +527,28 @@ static bool pixelNeedsUpdate(uint8_t strip, uint16_t pixel,uint8_t r, uint8_t g,
 		}
 	}
 	return true;
+}
+
+/*
+ * Gets the scale factors for a single pixel
+ * If no scaling is required, it will return false
+ */
+static bool getPixelScaling(uint8_t strip, uint16_t pixel, RGB_t* factors)
+{
+#ifdef APA_ENABLE_SCALING
+	strip--;
+	for(uint8_t i=0;i<APA_SCALE_MAX_SEGMENTS;i++)
+	{
+		if(pixel >= pixelsCorrs[strip][i].start && pixel <= pixelsCorrs[strip][i].stop)
+		{
+			factors->r = pixelsCorrs[strip][i].r;
+			factors->g = pixelsCorrs[strip][i].g;
+			factors->b = pixelsCorrs[strip][i].b;
+			return true;
+		}
+	}
+#endif
+	return false;
 }
 
 /*

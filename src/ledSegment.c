@@ -70,38 +70,6 @@
  *		Update fade colour. If fade is done (>=RGBMax), reset colour state, add new
  *		Start in the ringbuffer from the currentLed (which is index0+pixelsPerIteration). Set all LEDs from this index until end of ringbuffer to maxRGB
  *
- *	Ideer på hur vi ska göra för glitter:
- *	Varje led bör köra lite fade (för att det ska se fint ut :3)
- *	Setup av segment (utöver det andra)
- *		Sätt upp en ringbuffer (Malloc) med det antalet LEDsen som ska vara. Ringbuffern innehåller numret på LEDen som är tänd i glittret
- *
- *	Setup av glitter
- *
- *	Glitter info som behövs
- *		Antalet LEDs i glitter (setup)
- *		Antalet LEDs som ska köra fade samtidigt.
- *		R,G,B max (setup)
- *		Fade-tid (tid från 0 till max) (setup).
- *
- *		Haka på pulse settings:
- *		RGB=RGBMax in pulse;
- *		FadeTid ges av pixelTime i millisekunder (upp till 65535, vilket borde var OK)
- *		Vid setup räknas pixelTime om till att innebära antalet LED_UPDATE_CYCLES till
- *
- *		Rate=Max/nofCyclesToMax;
- *		col+=rate;
- *
- *		Använd pulse infon kanske?
- *	En cykel är som följer:
- *	1. Börja på LEDen som pekas ut av antalet samtidigt fadeande LEDs och gå igenom ringbuffern sätt alla LEDs som ligger på fullt
- *	2. Uppdatera fade på alla LEDs som ska köras fade på.
- *	3. Om fade har nått slutet, lägg till ett antal random LEDs till först i buffern.
- *		3.1 Om vi inte är nåt kontinuerligt läge, kolla om vi har fyllt buffern. I så fall är vi klara.
- *
- *	Att lägga till i statemaskinen:
- *		Glitter fade state (current RGB)
- *		Active LEDs (list of the numbers of LEDs that are active in glitter)
- *
  */
 
 #include "ledSegment.h"

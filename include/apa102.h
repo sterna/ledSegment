@@ -21,6 +21,14 @@ typedef struct
 	uint8_t r;
 }apa102Pixel_t;
 
+typedef struct
+{
+	uint16_t start;
+	uint16_t stop;
+	uint8_t r;
+	uint8_t g;
+	uint8_t b;
+}apa102ScaleSegment_t;
 
 //Add the start bits to the global setting
 #define APA_ADD_GLOBAL_BITS(x) (x | 0b11100000)
