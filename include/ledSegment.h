@@ -28,8 +28,8 @@
  */
 typedef enum
 {
-	LEDSEG_MODE_LOOP=0,					//Pulse starts over from the first (or last) LED in the segment
-	LEDSEG_MODE_LOOP_END,				//Pulse behaves the same as in Loop mode, but the whole pulse will disappear before re-appearing
+	LEDSEG_MODE_LOOP=0,					//Pulse starts over from the first (or last) LED in the segment. For fade, loop will go to max/min and restart from the other side.
+	LEDSEG_MODE_LOOP_END,				//Pulse behaves the same as in Loop mode, but the whole pulse will disappear before re-appearing. For fade, this works the same as regular loop
 	LEDSEG_MODE_BOUNCE,					//Pulse will travel to the end of the segment, and then back to beginning, and then back to the end and loop like that
 	LEDSEG_MODE_TIMED_PULSE,			//Todo: Not implemented yet
 	LEDSEG_MODE_GLITTER_LOOP,			//Loop: At max, it puts all those points out and restarts from 0.
@@ -39,6 +39,7 @@ typedef enum
 	LEDSEG_MODE_NOF_MODES
 }ledSegmentMode_t;
 
+
 /*
  * This struct describes a setting used for the a ledSegmentPulse
  */
@@ -46,19 +47,19 @@ typedef struct
 {
 	ledSegmentMode_t mode;	//The current mode for this pulse
 
-	uint8_t r_max;			//Pulse max colour
-	uint8_t g_max;			//Pulse max colour
-	uint8_t b_max;			//Pulse max colour
+	uint8_t r_max;			//Pulse max colour. Used as max colour for each glitter point.
+	uint8_t g_max;			//Pulse max colour. Used as max colour for each glitter point.
+	uint8_t b_max;			//Pulse max colour. Used as max colour for each glitter point.
 
 	//Number of LEDs in the pulse. The total number of lit LEDs in a pulse is the sum of all these.
-	uint16_t ledsMaxPower;			//The number of LEDs that shall be the middle of the pulse (the number of LEDs using max power)
+	uint16_t ledsMaxPower;			//The number of LEDs that shall be the middle of the pulse (the number of LEDs using max power). Glitter: The number of fully lit glitter points.
 	uint16_t ledsFadeBefore;		//The number of LEDs to be faded before the max LED segment start
 	uint16_t ledsFadeAfter;			//The number of LEDs to be faded after the max LED segment end
 	uint16_t startLed;				//The LED to start with. If larger than the total LEDs in the segment, it will start from the top
 
 	int8_t startDir;				//The direction we shall start in (+1 or -1)
-	uint16_t pixelsPerIteration;	//The number of pixels the pulse shall move per iteration
-	uint16_t pixelTime;				//The number of multiples of LEDSEG_UPDATE_PERIOD_TIME between moving the pulse forward
+	uint16_t pixelsPerIteration;	//The number of pixels the pulse shall move per iteration. ALso the number of pixels that shall be lit each iteration
+	uint16_t pixelTime;				//The number of multiples of LEDSEG_UPDATE_PERIOD_TIME between moving the pulse forward. Glitter: The number of ms for a complete fade.
 	uint32_t cycles;				//If cycles=0, it will run forever. Cycles only has effect in MODE_LOOP_END
 	uint8_t globalSetting;			//The global setting to be used
 
@@ -80,10 +81,21 @@ typedef struct
 
 	uint32_t fadeTime;				//The time to fade from min to max
 	uint16_t fadePeriodMultiplier;	//This is used for long fades to avoid capping the rate
-	int8_t startDir;				//The direction we shall start in (+1 or -1)
+	int8_t startDir;				//The direction we shall start in (+1 or -1). Direction 1 will fade all colours from min to max, and -1 will fade from max to min
 	uint32_t cycles;				//If cycles=0, it will run forever (or rather for max uint32 cycles)
 	uint32_t fadeCycles;			//The number of animation cycles that will actually run. Not set by user, but generated during setFade.
 	uint8_t globalSetting;			//The global setting to be used
+
+	//Storage of settings and states used for fading between two settings
+	bool switchMode;				//Indicates that we are currently switching between fade settings
+	//Colours saved to be re-loaded when switch is done. Min or max is decided by dir
+	uint8_t savedR;
+	uint8_t savedG;
+	uint8_t savedB;
+	//Saved variables to be restored when switch is done
+	int8_t savedDir;
+	uint32_t savedCycles;
+
 }ledSegmentFadeSetting_t;
 
 /*
@@ -137,10 +149,11 @@ typedef struct
 	uint8_t strip;
 	uint16_t start;
 	uint16_t stop;
+	bool invertPulse;	//Indicates if a segment direction is inverted, so that the pulse shall be inverted (Todo: Create a proper segmentInverted, but it's going to be muuuch more work)
 	ledSegmentState_t state;
 }ledSegment_t;
 
-uint8_t ledSegInitSegment(uint8_t strip, uint16_t start, uint16_t stop,ledSegmentPulseSetting_t* pulse, ledSegmentFadeSetting_t* fade);
+uint8_t ledSegInitSegment(uint8_t strip, uint16_t start, uint16_t stop, bool invertPulse, ledSegmentPulseSetting_t* pulse, ledSegmentFadeSetting_t* fade);
 bool ledSegExists(uint8_t seg);
 bool ledSegSetPulse(uint8_t seg, ledSegmentPulseSetting_t* ps);
 bool ledSegSetFade(uint8_t seg, ledSegmentFadeSetting_t* fs);

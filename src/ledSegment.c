@@ -70,6 +70,7 @@
  *		Update fade colour. If fade is done (>=RGBMax), reset colour state, add new
  *		Start in the ringbuffer from the currentLed (which is index0+pixelsPerIteration). Set all LEDs from this index until end of ringbuffer to maxRGB
  *
+ *
  */
 
 #include "ledSegment.h"
@@ -94,7 +95,7 @@ static bool isGlitterMode(ledSegmentMode_t mode);
  * Will return a value larger than LEDSEG_MAX_SEGMENTS if there is no more room for segments or any other error
  * Note that it's possible to register a segment over another segment. There are no checks for this
  */
-uint8_t ledSegInitSegment(uint8_t strip, uint16_t start, uint16_t stop,ledSegmentPulseSetting_t* pulse, ledSegmentFadeSetting_t* fade)
+uint8_t ledSegInitSegment(uint8_t strip, uint16_t start, uint16_t stop, bool invertPulse, ledSegmentPulseSetting_t* pulse, ledSegmentFadeSetting_t* fade)
 {
 	if(currentNofSegments>=LEDSEG_MAX_SEGMENTS || start>stop)
 	{
@@ -110,6 +111,7 @@ uint8_t ledSegInitSegment(uint8_t strip, uint16_t start, uint16_t stop,ledSegmen
 	sg->strip=strip;
 	sg->start=start;
 	sg->stop=stop;
+	sg->invertPulse=invertPulse;
 
 	currentNofSegments++;
 	if(!ledSegSetFade(currentNofSegments-1,fade))
@@ -180,13 +182,23 @@ bool ledSegSetFade(uint8_t seg, ledSegmentFadeSetting_t* fs)
 	//Copy new setting into state
 	memcpy(fd,fs,sizeof(ledSegmentFadeSetting_t));
 	//Setup fade parameters
-	uint16_t periodMultiplier=3;
+	uint16_t periodMultiplier=1;
 	bool makeItSlower=false;
+
+	/*
+	 * r_max=200
+	 * r_min=100
+	 * fadeTime=10000
+	 *
+	 *
+	 */
+	//The total number update periods we have to achieve the fade time Todo: consider adding a limit if a fade is very small (such as less than 10 steps)
 	uint32_t master_steps=0;
 	do
 	{
 		makeItSlower=false;
 		master_steps=fs->fadeTime/(LEDSEG_UPDATE_PERIOD_TIME*periodMultiplier);
+		//Calculate number of steps needed to increase the colour per update period. If any value is too small, we need to go to a slower period
 		st->r_rate = abs((fs->r_max-fs->r_min))/master_steps;
 		if(st->r_rate<1 && (fs->r_max != fs->r_min))
 		{
@@ -225,7 +237,7 @@ bool ledSegSetFade(uint8_t seg, ledSegmentFadeSetting_t* fs)
 	}
 	st->fadeDir = fs->startDir;
 	//Check if user wants a very large number of cycles. If so, mark this as run indefinitely
-	if((UINT32_MAX/st->fadeCycle)<master_steps)
+	if(fs->cycles==0 || (UINT32_MAX/fs->cycles)<master_steps)
 	{
 		st->confFade.fadeCycles=0;
 	}
@@ -271,9 +283,9 @@ bool ledSegSetPulse(uint8_t seg, ledSegmentPulseSetting_t* ps)
 	pu=&(sg->state.confPulse);
 	//Copy new setting into state
 	memcpy(pu,ps,sizeof(ledSegmentPulseSetting_t));
-	st->pulseDir=ps->startDir;
+
 	st->pulseActive = true;
-	if(isGlitterMode(ps->mode))
+	if(isGlitterMode(pu->mode))
 	{
 		//Allocate memory for the ring buffer.
 		free(st->glitterActiveLeds);	//Remove old buffer
@@ -295,19 +307,28 @@ bool ledSegSetPulse(uint8_t seg, ledSegmentPulseSetting_t* ps)
 	}
 	else
 	{
-		//Check if start led is in the segment
-		pu->startLed += (sg->start-1);
+		if(sg->invertPulse)
+		{
+			pu->startLed = sg->stop-pu->startLed+1;
+			pu->startDir *= -1;
+		}
+		else
+		{
+			pu->startLed = sg->start + pu->startLed-1;
+		}
+		if(pu->startLed>sg->stop)
+		{
+			pu->startLed=sg->stop;
+		}
+		else if(pu->startLed < sg->start)
+		{
+			pu->startLed=sg->start;
+		}
 		st->currentLed = pu->startLed;
-		if(st->currentLed > sg->stop)
-		{
-			st->currentLed = sg->stop;
-		}
-		else if(st->currentLed < sg->start)
-		{
-			st->currentLed = sg->start;
-		}
 		st->cyclesToPulseMove = pu->pixelTime;
 	}
+	st->pulseDir=pu->startDir;
+
 	//If the global setting is not used (set to 0) the default global will be loaded dynamically from the current global
 	if(pu->globalSetting == 0)
 	{
@@ -601,16 +622,8 @@ bool ledSegRestart(uint8_t seg, bool restartFade, bool restartPulse)
 	if(restartPulse)
 	{
 		st->pulseDone=false;
-		if(st->confPulse.startDir == 1)
-		{
-			st->currentLed = segments[seg].start;
-			st->pulseDir = 1;
-		}
-		else
-		{
-			st->currentLed = segments[seg].stop;
-			st->pulseDir = -1;
-		}
+		st->pulseDir = st->confPulse.startDir;
+		st->currentLed = st->confPulse.startLed;
 		if(isGlitterMode(st->confPulse.mode))
 		{
 			//Todo: Add handling for bounce
@@ -652,6 +665,12 @@ bool ledSegSetGlobal(uint8_t seg, uint8_t fadeGlobal, uint8_t pulseGlobal)
  * Each calculation cycle will calculate a fraction of the total number of segments and load this into the big pixel array
  * Note: no calculations are done while the strips are updating (the DMA is running).
  *	 Otherwise, we would need to keep two copies of the whole pixel map, costing about 3kB of additional RAM
+ *
+ *	 Todo: Add fade switch mode
+ *	 Add an option in fadeSetting or a state in fadeState.
+ *	 The fade state or conf will need to remember some parts of the fade setting (the min colours, that it's fade, and the number of cycles)
+ *	 Set up the fade as normal, but create that special setting that allows fade between two colours and one cycle.
+ *	 Once fadeDone is true, switch the fade to the fade that's it supposed to be and switch to that
  *
  */
 void ledSegRunIteration()
@@ -1171,7 +1190,39 @@ static void fadeCalcColour(uint8_t seg)
 		//Check if the fade is done. if so, mark this fade as done. Otherwise, update what is do be done at an extreme
 		if(st->fadeCycle && checkCycleCounter(&st->fadeCycle))
 		{
-			st->fadeDone=true;
+			//Perform switch, if needed to. Otherwise, we're done
+			if(conf->switchMode)
+			{
+				conf->switchMode=false;
+				if(conf->startDir==1)	//We are a max
+				{
+					//Restore min
+					conf->r_min = conf->savedR;
+					conf->g_min = conf->savedG;
+					conf->b_min = conf->savedB;
+				}
+				else	//We are at min
+				{
+					//Restore max
+					conf->r_max = conf->savedR;
+					conf->g_max = conf->savedG;
+					conf->b_max = conf->savedB;
+				}
+				if(conf->mode == LEDSEG_MODE_LOOP || conf->mode == LEDSEG_MODE_LOOP_END)
+				{
+					conf->startDir = conf->savedDir;
+				}
+				else if(conf->mode == LEDSEG_MODE_BOUNCE)
+				{
+					conf->startDir = st->fadeDir*-1;
+				}
+				conf->cycles = conf->savedCycles;
+				ledSegSetFade(seg,conf);
+			}
+			else
+			{
+				st->fadeDone=true;
+			}
 		}
 		else
 		{
