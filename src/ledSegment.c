@@ -188,29 +188,46 @@ bool ledSegSetFade(uint8_t seg, ledSegmentFadeSetting_t* fs)
 	/*
 	 * r_max=200
 	 * r_min=100
-	 * fadeTime=10000
+	 * fadeTime=700
+	 * perMul=1:
+	 * 	700/(20*1) = 35
+	 * 	rRate=100/35=2.85 ≈ 2
+	 * 	rMax=35*2=70 -> way too low
+	 * perMul=2
+	 * 	700/(20*2) = 17.5 ≈ 17
+	 * 	rRate=100/17=5.8≈5
+	 * 	rMax=5*17=85
+	 * perMul=3
+	 * 	700/(20*3)=11.6 ≈ 11
+	 * 	rRate=100/11=9.09
+	 * 	rMax=
+	 *
 	 *
 	 *
 	 */
 	//The total number update periods we have to achieve the fade time Todo: consider adding a limit if a fade is very small (such as less than 10 steps)
 	uint32_t master_steps=0;
+	const uint8_t largestError=50;
 	do
 	{
 		makeItSlower=false;
 		master_steps=fs->fadeTime/(LEDSEG_UPDATE_PERIOD_TIME*periodMultiplier);
 		//Calculate number of steps needed to increase the colour per update period. If any value is too small, we need to go to a slower period
-		st->r_rate = abs((fs->r_max-fs->r_min))/master_steps;
-		if(st->r_rate<1 && (fs->r_max != fs->r_min))
+		uint8_t r_diff= abs(fs->r_max-fs->r_min);
+		uint8_t g_diff= abs(fs->g_max-fs->g_min);
+		uint8_t b_diff= abs(fs->b_max-fs->b_min);
+		st->r_rate = r_diff/master_steps;
+		if(r_diff!=0 && (st->r_rate<1 || ((r_diff%master_steps)>largestError)))
 		{
 			makeItSlower=true;
 		}
-		st->g_rate = abs((fs->g_max-fs->g_min))/master_steps;
-		if(st->g_rate<1 && (fs->g_max != fs->g_min))
+		st->g_rate = g_diff/master_steps;
+		if(g_diff!=0 && (st->g_rate<1 || ((g_diff%master_steps)>largestError)))
 		{
 			makeItSlower=true;
 		}
-		st->b_rate = abs((fs->b_max-fs->b_min))/master_steps;
-		if(st->b_rate<1 && (fs->b_max != fs->b_min))
+		st->b_rate = b_diff/master_steps;
+		if(b_diff!=0 && (st->b_rate<1 || ((b_diff%master_steps)>largestError)))
 		{
 			makeItSlower=true;
 		}
@@ -243,7 +260,7 @@ bool ledSegSetFade(uint8_t seg, ledSegmentFadeSetting_t* fs)
 	}
 	else
 	{
-		st->confFade.fadeCycles=fs->cycles*master_steps;	//Each cycle shall be one half cycle (min->max)
+		st->confFade.fadeCycles=fs->cycles;//*master_steps;	//Each cycle shall be one half cycle (min->max)
 	}
 	st->fadeCycle=st->confFade.fadeCycles;
 	//If the global setting is not used (set to 0) the default global will be loaded dynamically from the current global
@@ -252,7 +269,7 @@ bool ledSegSetFade(uint8_t seg, ledSegmentFadeSetting_t* fs)
 		//fd->globalSetting = APA_MAX_GLOBAL_SETTING+1;
 	}
 	st->fadeActive = true;
-	st->fadeDone=false;
+	st->fadeDone=LED_SEG_FADE_NOT_DONE;
 
 	return true;
 }
@@ -546,7 +563,7 @@ bool ledSegGetFadeDone(uint8_t seg)
 	{
 		return false;
 	}
-	return segments[seg].state.fadeDone;
+	return (segments[seg].state.fadeDone==LED_SEG_FADE_DONE);
 }
 
 /*
@@ -616,7 +633,7 @@ bool ledSegRestart(uint8_t seg, bool restartFade, bool restartPulse)
 			st->b = st->confFade.b_max;
 			st->fadeDir = -1;
 		}
-		st->fadeDone=false;
+		st->fadeDone=LED_SEG_FADE_NOT_DONE;
 		st->fadeCycle=st->confFade.fadeCycles;
 	}
 	if(restartPulse)
@@ -655,6 +672,62 @@ bool ledSegSetGlobal(uint8_t seg, uint8_t fadeGlobal, uint8_t pulseGlobal)
 	return true;
 }
 
+
+/*
+ * Sets up a mode where you switch from one mode to another (soft fade between the two fade colours)
+ * st is the fade setting to fade TO (this just loads the correct colour)
+ * switchAtMax indicates of the modeChange-animation shall end on min or max
+ */
+void ledSegSetModeChange(ledSegmentFadeSetting_t* fs, uint8_t seg, bool switchAtMax)
+{
+	if(!ledSegExists(seg))
+	{
+		return;
+	}
+	if(seg==LEDSEG_ALL)
+	{
+		for(uint8_t i=0;i<currentNofSegments;i++)
+		{
+			ledSegSetModeChange(fs,i,switchAtMax);
+		}
+		return;
+	}
+
+	//Get the colour of the current state to know what to move from
+	ledSegmentState_t* st = &(segments[seg].state);
+	ledSegmentFadeSetting_t fsTmp;
+	memcpy(&fsTmp,fs,sizeof(ledSegmentFadeSetting_t));
+	//At this point, we know the entire setting that we're going to go TO.
+	//Now we save the settings needed:
+	st->savedCycles = fs->cycles;
+	st->switchMode=true;
+	st->savedDir = fs->startDir;
+	//We will fade from min to max, with dir up. We therefore save the min value and assign that to the current state.
+	if(switchAtMax)
+	{
+		st->savedR =fs->r_min;
+		st->savedG =fs->g_min;
+		st->savedB =fs->b_min;
+		fsTmp.r_min = st->r;
+		fsTmp.g_min = st->g;
+		fsTmp.b_min = st->b;
+		fsTmp.startDir=1;
+	}
+	else	//we will fade from max to min, with dir down.
+	{
+		st->savedR =fs->r_max;
+		st->savedG =fs->g_max;
+		st->savedB =fs->b_max;
+		fsTmp.r_max = st->r;
+		fsTmp.g_max = st->g;
+		fsTmp.b_max = st->b;
+		fsTmp.startDir=-1;
+	}
+	//Cycles shall always be 1, so we know when we are done
+	fsTmp.cycles=1;
+	ledSegSetFade(seg,&fsTmp);
+}
+
 /*
  * The great big update function. This should be run as often as possible (not from interrupts!)
  * It keeps its own time gate, and will from time to time create a heavy load
@@ -691,6 +764,7 @@ void ledSegRunIteration()
 
 	if(systemTime>nextCallTime && !apa102DMABusy(APA_ALL_STRIPS))
 	{
+		calcCycle++;
 		nextCallTime=systemTime+LEDSEG_UPDATE_PERIOD_TIME/LEDSEG_CALCULATION_CYCLES;
 		//Calculate the number of segments to calculate this cycle (always try to calculate one segment, even though it doesn't exist)
 		stopSegment=currentSeg+currentNofSegments/LEDSEG_CALCULATION_CYCLES+1;
@@ -725,7 +799,6 @@ void ledSegRunIteration()
 			currentSeg++;
 		}
 		//Update calculation cycle and check if we should update the physical strip
-		calcCycle++;
 		if(calcCycle>=LEDSEG_CALCULATION_CYCLES)
 		{
 			//Update LEDs and restart calc cycle
@@ -1089,6 +1162,8 @@ static bool checkCycleCounterU16(uint16_t* cycle)
 /*
  * Calculates the colour to set for the fade part of this segment
  * This colour is applied to all parts of the LED fade segment
+ *
+ * Todo: Have a mode to ensure that we've faded until max for all colours
  */
 static void fadeCalcColour(uint8_t seg)
 {
@@ -1152,6 +1227,44 @@ static void fadeCalcColour(uint8_t seg)
 			st->b=utilIncWithDir(st->b,st->fadeDir,st->b_rate,conf->b_min,conf->b_max);
 		}
 		//Check if we have reached an end (regardless of mode)
+		bool bAtMin=false;
+		bool bAtMax=false;
+		bool gAtMin=false;
+		bool gAtMax=false;
+		bool rAtMin=false;
+		bool rAtMax=false;
+		bool allReached=false;
+		//Check if each colour has reached its end
+		if((blueReversed && st->b<=conf->b_max) || (!blueReversed && st->b>=conf->b_max))
+		{
+			bAtMax=true;
+		}
+		else if((blueReversed && st->b>=conf->b_min) || (!blueReversed && st->b<=conf->b_min))
+		{
+			bAtMin=true;
+		}
+		if((greenReversed && st->g<=conf->g_max) || (!greenReversed && st->g>=conf->g_max))
+		{
+			gAtMax=true;
+		}
+		else if((greenReversed && st->g>=conf->g_min) || (!greenReversed && st->g<=conf->g_min))
+		{
+			gAtMin=true;
+		}
+		if((redReversed && st->r<=conf->r_max) || (!redReversed && st->r>=conf->r_max))
+		{
+			rAtMax=true;
+		}
+		else if((redReversed && st->r>=conf->r_min) || (!redReversed && st->r<=conf->r_min))
+		{
+			rAtMin=true;
+		}
+
+		if((bAtMin || bAtMax) && (gAtMin || gAtMax) && (rAtMin || rAtMax))
+		{
+			allReached=true;
+		}
+		/*
 		bool compColAtMin=false;
 		bool compColAtMax=false;
 		if(compareColor==COL_BLUE)
@@ -1186,82 +1299,105 @@ static void fadeCalcColour(uint8_t seg)
 			{
 				compColAtMin=true;
 			}
-		}
-		//Check if the fade is done. if so, mark this fade as done. Otherwise, update what is do be done at an extreme
-		if(st->fadeCycle && checkCycleCounter(&st->fadeCycle))
+		}*/
+		if(allReached)
 		{
-			//Perform switch, if needed to. Otherwise, we're done
-			if(conf->switchMode)
+			/*
+			 * Todo: Check sync status.
+			 * if fadeCycle==1 -> Now we are actually done and ready here.
+			 * Check sync segments.
+			 * If all sync segments ready, go ahead and finish the cycle. Otherwise, run one more cycle.
+			 * setreadyForSYnc(this seg);
+			 *
+			 * bool CheckSyncSegment(uint8_t seg):
+			 *  bool thisSegSyncs=false;
+			 *  bool allSegmentsHaveSynced=true;
+			 *  for (i=0;i<nofSegs;i++)
+			 *  {
+			 *  if(syncList[i]==seg) thisSegSyncs=true;
+			 *  if(syncList[i].isReadyForSync!=true)
+			 *  {
+			 *  	allSegmentsHaveSynced=false;
+			 *  }
+			 *  return allSegmentsHaveSynced & thisSegSyncs
+			 */
+			//Check if the fade is done. if so, mark this fade as done. Otherwise, update what is do be done at an extreme
+			if(st->fadeCycle && checkCycleCounter(&st->fadeCycle))
 			{
-				conf->switchMode=false;
-				if(conf->startDir==1)	//We are a max
+				//Perform switch, if needed to. Otherwise, we're done
+				if(st->switchMode)
 				{
-					//Restore min
-					conf->r_min = conf->savedR;
-					conf->g_min = conf->savedG;
-					conf->b_min = conf->savedB;
+					st->switchMode=false;
+					if(conf->startDir==1)	//We are at max
+					{
+						//Restore min
+						conf->r_min = st->savedR;
+						conf->g_min = st->savedG;
+						conf->b_min = st->savedB;
+					}
+					else	//We are at min
+					{
+						//Restore max
+						conf->r_max = st->savedR;
+						conf->g_max = st->savedG;
+						conf->b_max = st->savedB;
+					}
+					if(conf->mode == LEDSEG_MODE_LOOP || conf->mode == LEDSEG_MODE_LOOP_END)
+					{
+						conf->startDir = st->savedDir;
+					}
+					else if(conf->mode == LEDSEG_MODE_BOUNCE)
+					{
+						conf->startDir = st->fadeDir*-1;
+					}
+					conf->cycles = st->savedCycles;
+					ledSegSetFade(seg,conf);
 				}
-				else	//We are at min
+				else
 				{
-					//Restore max
-					conf->r_max = conf->savedR;
-					conf->g_max = conf->savedG;
-					conf->b_max = conf->savedB;
+					st->fadeDone=LED_SEG_FADE_DONE;
 				}
-				if(conf->mode == LEDSEG_MODE_LOOP || conf->mode == LEDSEG_MODE_LOOP_END)
-				{
-					conf->startDir = conf->savedDir;
-				}
-				else if(conf->mode == LEDSEG_MODE_BOUNCE)
-				{
-					conf->startDir = st->fadeDir*-1;
-				}
-				conf->cycles = conf->savedCycles;
-				ledSegSetFade(seg,conf);
 			}
 			else
 			{
-				st->fadeDone=true;
-			}
-		}
-		else
-		{
-			switch (conf->mode)
-			{
-				case LEDSEG_MODE_BOUNCE:
+				switch (conf->mode)
 				{
-					if(compColAtMin)
+					case LEDSEG_MODE_BOUNCE:
 					{
-						st->fadeDir=1;
+						st->fadeDir*=-1;
+						/*if(compColAtMin)
+						{
+							st->fadeDir=1;
+						}
+						else if(compColAtMax)
+						{
+							st->fadeDir=-1;
+						}*/
+						break;
 					}
-					else if(compColAtMax)
+					//Loop and Loop_end works the same
+					case LEDSEG_MODE_LOOP:
+					case LEDSEG_MODE_LOOP_END:
 					{
-						st->fadeDir=-1;
+						if(st->fadeDir==-1)//compColAtMin)
+						{
+							st->r=conf->r_max;
+							st->g=conf->g_max;
+							st->b=conf->b_max;
+						}
+						else if(st->fadeDir==1)//compColAtMax)
+						{
+							st->r=conf->r_min;
+							st->g=conf->g_min;
+							st->b=conf->b_min;
+						}
+						break;
 					}
-					break;
-				}
-				//Loop and Loop_end works the same
-				case LEDSEG_MODE_LOOP:
-				case LEDSEG_MODE_LOOP_END:
-				{
-					if(compColAtMin)
+					default:
 					{
-						st->r=conf->r_max;
-						st->g=conf->g_max;
-						st->b=conf->b_max;
+						//For any other mode, do nothing
+						break;
 					}
-					else if(compColAtMax)
-					{
-						st->r=conf->r_min;
-						st->g=conf->g_min;
-						st->b=conf->b_min;
-					}
-					break;
-				}
-				default:
-				{
-					//For any other mode, do nothing
-					break;
 				}
 			}
 		}

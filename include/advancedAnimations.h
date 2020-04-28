@@ -37,7 +37,8 @@ typedef enum
 	SIMPLE_COL_WHITE,
 	SIMPLE_COL_NOF_COLOURS,
 	SIMPLE_COL_RANDOM,
-	SIMPLE_COL_OFF
+	SIMPLE_COL_OFF,
+	SIMPLE_COL_NO_CHANGE
 }simpleCols_t;
 
 
@@ -45,7 +46,7 @@ RGB_t animGetColour(simpleCols_t col);
 void animLoadLedSegFadeColour(simpleCols_t col,ledSegmentFadeSetting_t* st, uint8_t minScale, uint8_t maxScale);
 void animLoadLedSegPulseColour(simpleCols_t col,ledSegmentPulseSetting_t* st, uint8_t maxScale);
 void animLoadLedSegFadeBetweenColours(simpleCols_t colFrom, simpleCols_t colTo, ledSegmentFadeSetting_t* st, uint8_t fromScale, uint8_t toScale);
-void animLoadModeChange(simpleCols_t col, ledSegmentFadeSetting_t* st, uint8_t segment, bool switchAtMax, uint8_t minScale, uint8_t maxScale);
+void animSetModeChange(simpleCols_t col, ledSegmentFadeSetting_t* fs, uint8_t seg, bool switchAtMax, uint8_t minScale, uint8_t maxScale);
 
 void animTask();
 

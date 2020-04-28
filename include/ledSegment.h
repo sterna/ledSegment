@@ -39,6 +39,12 @@ typedef enum
 	LEDSEG_MODE_NOF_MODES
 }ledSegmentMode_t;
 
+typedef enum
+{
+	LED_SEG_FADE_NOT_DONE,
+	LED_SEG_FADE_DONE,
+	LED_SEG_FADE_WAITING_FOR_SYNC
+}ledSegmentFadeState_t;
 
 /*
  * This struct describes a setting used for the a ledSegmentPulse
@@ -71,7 +77,7 @@ typedef struct
 typedef struct
 {
 	ledSegmentMode_t mode;		//The current mode for this fade
-	//All min/max are the top and bottom values of the colour for all LEDs
+	//All min/max are the top and bottom values of the colour for all LEDs	TODO: Restructure to have a rgb-min, and rgb-max grouped
 	uint8_t r_min;
 	uint8_t r_max;
 	uint8_t g_min;
@@ -85,16 +91,6 @@ typedef struct
 	uint32_t cycles;				//If cycles=0, it will run forever (or rather for max uint32 cycles)
 	uint32_t fadeCycles;			//The number of animation cycles that will actually run. Not set by user, but generated during setFade.
 	uint8_t globalSetting;			//The global setting to be used
-
-	//Storage of settings and states used for fading between two settings
-	bool switchMode;				//Indicates that we are currently switching between fade settings
-	//Colours saved to be re-loaded when switch is done. Min or max is decided by dir
-	uint8_t savedR;
-	uint8_t savedG;
-	uint8_t savedB;
-	//Saved variables to be restored when switch is done
-	int8_t savedDir;
-	uint32_t savedCycles;
 
 }ledSegmentFadeSetting_t;
 
@@ -116,9 +112,19 @@ typedef struct
 	int8_t fadeDir;						//The current direction of fade
 	uint16_t cyclesToFadeChange;		//The number of cycles left to fade update (used to emulate fractional rates). This does not need to be set
 	bool fadeActive;					//Indicates if the strip has an active fade
-	bool fadeDone;						//Indicates if the fade has completed it's cycles, but that fade color shall remain unchanged
+	ledSegmentFadeState_t fadeDone;		//Indicates if the fade has completed it's cycles, but that fade color shall remain unchanged
 	ledSegmentFadeSetting_t confFade;	//All information about the fade
 	uint32_t fadeCycle;					//The current cycle of the animation (strictly speaking, this is number of updates left (one cycleFade is much smaller than a setting cycle)
+
+	//Storage of settings and states used for fading between two settings (So we can restore this to confFade later)
+	bool switchMode;					//Indicates that we are currently switching between fade settings
+	//Colours saved to be re-loaded when switch is done. Min or max is decided by dir
+	uint8_t savedR;
+	uint8_t savedG;
+	uint8_t savedB;
+	//Saved variables to be restored when switch is done
+	int8_t savedDir;
+	uint32_t savedCycles;
 
 	//Pulse state
 	int8_t pulseDir;					//The wander direction for the LED
@@ -135,7 +141,6 @@ typedef struct
 	uint8_t glitterG;
 	uint8_t glitterB;
 	uint16_t* glitterActiveLeds;		//The numbers (indexed within strip) of the LEDs active in glitter
-
 
 }ledSegmentState_t;
 
@@ -173,6 +178,7 @@ bool ledSegGetPulseDone(uint8_t seg);
 bool ledSegClearFade(uint8_t seg);
 bool ledSegClearPulse(uint8_t seg);
 bool ledSegSetGlobal(uint8_t seg, uint8_t fadeGlobal, uint8_t pulseGlobal);
+void ledSegSetModeChange(ledSegmentFadeSetting_t* fs, uint8_t segment, bool switchAtMax);
 
 bool ledSegRestart(uint8_t seg, bool restartFade, bool restartPulse);
 

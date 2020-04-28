@@ -103,16 +103,24 @@ void animLoadLedSegFadeBetweenColours(simpleCols_t colFrom, simpleCols_t colTo, 
 	st->b_max = settingTo.b_max;*/
 }
 
-
 /*
  * Sets up a mode where you switch from one mode to another (soft fade between the two fade colours)
- * st is the fade setting to fade TO (this just loads the correct colour)
+ * fs is the fade setting to fade TO (this just loads the correct colour)
  * switchAtMax indicates of the modeChange-animation shall end on min or max
+ * Note that this will actually perform the fadeSet, so a new fadeset of this fadesetting with this segment should not be performed
  */
-void animLoadModeChange(simpleCols_t col, ledSegmentFadeSetting_t* st, uint8_t segment, bool switchAtMax, uint8_t minScale, uint8_t maxScale)
+void animSetModeChange(simpleCols_t col, ledSegmentFadeSetting_t* fs, uint8_t seg, bool switchAtMax, uint8_t minScale, uint8_t maxScale)
 {
+	ledSegmentFadeSetting_t fsTmp;
+	memcpy(&fsTmp,fs,sizeof(ledSegmentFadeSetting_t));
 	//Load the setting as normal (will give us the max setting, as fade by default starts from max)
-	animLoadLedSegFadeColour(col,st,minScale,maxScale);
+	if(col!=SIMPLE_COL_NO_CHANGE)
+	{
+		animLoadLedSegFadeColour(col,&fsTmp,minScale,maxScale);
+	}
+	//Send the change we want to have to the ledSeg, as no-one else should access and change the state
+	ledSegSetModeChange(&fsTmp,seg,switchAtMax);
+
 
 	//To save for the next setting:
 	/*
@@ -133,7 +141,7 @@ void animLoadModeChange(simpleCols_t col, ledSegmentFadeSetting_t* st, uint8_t s
 	 *
 	 * Dir vid bytet indikerar om vi är på min eller max. Dir=1 indikerar max, dir=-1 indikerar min
 	 */
-
+/*
 	//Get the colour of the current state to know what to move from
 	ledSegment_t currentSeg;
 	ledSegGetState(segment,&currentSeg);
@@ -166,6 +174,7 @@ void animLoadModeChange(simpleCols_t col, ledSegmentFadeSetting_t* st, uint8_t s
 	}
 	//Cycles shall always be 1, so we know when we are done
 	st->cycles=1;
+	*/
 }
 
 /*
