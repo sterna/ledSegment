@@ -89,6 +89,11 @@ static void pulseCalcAndSet(uint8_t seg);
 static bool checkCycleCounter(uint32_t* cycle);
 static bool checkCycleCounterU16(uint16_t* cycle);
 static bool isGlitterMode(ledSegmentMode_t mode);
+static bool checkSyncReadyFade(uint8_t syncGrp, uint8_t seg);
+static bool checkFadeNotDoneAll(uint8_t syncGrp);
+static void resetSyncDoneGroup(uint8_t syncGrp);
+
+
 
 /*
  * Inits an LED segment
@@ -256,20 +261,20 @@ bool ledSegSetFade(uint8_t seg, ledSegmentFadeSetting_t* fs)
 	//Check if user wants a very large number of cycles. If so, mark this as run indefinitely
 	if(fs->cycles==0 || (UINT32_MAX/fs->cycles)<master_steps)
 	{
-		st->confFade.fadeCycles=0;
+		st->confFade.cycles=0;
 	}
 	else
 	{
-		st->confFade.fadeCycles=fs->cycles;//*master_steps;	//Each cycle shall be one half cycle (min->max)
+		st->confFade.cycles=fs->cycles;//*master_steps;	//Each cycle shall be one half cycle (min->max)
 	}
-	st->fadeCycle=st->confFade.fadeCycles;
+	st->fadeCycle=st->confFade.cycles;
 	//If the global setting is not used (set to 0) the default global will be loaded dynamically from the current global
 	if(fd->globalSetting == 0)
 	{
 		//fd->globalSetting = APA_MAX_GLOBAL_SETTING+1;
 	}
 	st->fadeActive = true;
-	st->fadeDone=LED_SEG_FADE_NOT_DONE;
+	st->fadeState=LEDSEG_FADE_NOT_DONE;
 
 	return true;
 }
@@ -563,7 +568,7 @@ bool ledSegGetFadeDone(uint8_t seg)
 	{
 		return false;
 	}
-	return (segments[seg].state.fadeDone==LED_SEG_FADE_DONE);
+	return (segments[seg].state.fadeState==LEDSEG_FADE_DONE);
 }
 
 /*
@@ -633,8 +638,8 @@ bool ledSegRestart(uint8_t seg, bool restartFade, bool restartPulse)
 			st->b = st->confFade.b_max;
 			st->fadeDir = -1;
 		}
-		st->fadeDone=LED_SEG_FADE_NOT_DONE;
-		st->fadeCycle=st->confFade.fadeCycles;
+		st->fadeState=LEDSEG_FADE_NOT_DONE;
+		st->fadeCycle=st->confFade.cycles;
 	}
 	if(restartPulse)
 	{
@@ -1158,7 +1163,7 @@ static bool checkCycleCounterU16(uint16_t* cycle)
 	*cycle=tmp;
 	return false;
 }
-
+static bool segSyncRelease[LEDSEG_MAX_SEGMENTS];
 /*
  * Calculates the colour to set for the fade part of this segment
  * This colour is applied to all parts of the LED fade segment
@@ -1167,6 +1172,7 @@ static bool checkCycleCounterU16(uint16_t* cycle)
  */
 static void fadeCalcColour(uint8_t seg)
 {
+	volatile uint8_t segTmp=seg;
 	ledSegmentState_t* st;
 	ledSegmentFadeSetting_t* conf;
 	if(!ledSegExists(seg))
@@ -1302,104 +1308,195 @@ static void fadeCalcColour(uint8_t seg)
 		}*/
 		if(allReached)
 		{
+
 			/*
-			 * Todo: Check sync status.
-			 * if fadeCycle==1 -> Now we are actually done and ready here.
-			 * Check sync segments.
-			 * If all sync segments ready, go ahead and finish the cycle. Otherwise, run one more cycle.
-			 * setreadyForSYnc(this seg);
+			 * Om den är i syncgrp, måste den vänta tills alla i samma syncgrp är klara innan den går vidare
+			 * NÄR ett segment hamnar här och alla är klara, kan vi gå vidare.
+			 * När vi går vidare måste resten av syncgruppen veta att vi blev klara och ska gå vidare.
 			 *
-			 * bool CheckSyncSegment(uint8_t seg):
-			 *  bool thisSegSyncs=false;
-			 *  bool allSegmentsHaveSynced=true;
-			 *  for (i=0;i<nofSegs;i++)
-			 *  {
-			 *  if(syncList[i]==seg) thisSegSyncs=true;
-			 *  if(syncList[i].isReadyForSync!=true)
-			 *  {
-			 *  	allSegmentsHaveSynced=false;
-			 *  }
-			 *  return allSegmentsHaveSynced & thisSegSyncs
+			 * state 1: sync not done (vi kör som vanligt och går till sin extrem
+			 * state 2: extreme reached, this seg ready for sync
+			 * state 3: all reached and synced.
+			 * state 4: sync done for this seg
+			 * state 5: sync done for all, move to state 1
 			 */
-			//Check if the fade is done. if so, mark this fade as done. Otherwise, update what is do be done at an extreme
-			if(st->fadeCycle && checkCycleCounter(&st->fadeCycle))
+
+			volatile ledSegmentFadeState_t syncState=LEDSEG_FADE_NOT_DONE;
+			if(conf->syncGroup)
 			{
-				//Perform switch, if needed to. Otherwise, we're done
-				if(st->switchMode)
+				//We enter here and we have not marked this as ready. Mark it as ready and continue to loop the fade to its own max
+				if(st->fadeState==LEDSEG_FADE_NOT_DONE)
 				{
-					st->switchMode=false;
-					if(conf->startDir==1)	//We are at max
+					st->fadeState=LEDSEG_FADE_WAITING_FOR_SYNC;
+				}
+				if(checkSyncReadyFade(conf->syncGroup,seg))
+				{
+					segSyncRelease[conf->syncGroup]=true;
+				}
+				//Check: Have all reached and are we at the lowest seg in the group?
+				//If so, we can release all segs in this group
+			}
+			/*
+			 * Sync system (fade)
+			 * 	Register syncs:
+			 * 		Add the sync number to the fade setting.
+			 * 		Send this setting to a segment
+			 *
+			 * 	During run
+			 * 		When this segment has allReached and is about to clear the last cycle, mark as waitingForSync.
+			 * 		Check if all segments with this sync number are waitingForSync.
+			 * 			If yes, end cycle and continue
+			 * 			If no, run one more cycle and check again.
+			 */
+
+			if(!conf->syncGroup || (conf->syncGroup && segSyncRelease[conf->syncGroup]))
+			{
+				//Check if the fade is done. if so, mark this fade as done. Otherwise, update what is do be done at an extreme
+				if(st->fadeCycle && checkCycleCounter(&st->fadeCycle))
+				{
+					//Perform switch, if needed to. Otherwise, we're done
+					if(st->switchMode)
 					{
-						//Restore min
-						conf->r_min = st->savedR;
-						conf->g_min = st->savedG;
-						conf->b_min = st->savedB;
+						st->switchMode=false;
+						if(conf->startDir==1)	//We are at max
+						{
+							//Restore min
+							conf->r_min = st->savedR;
+							conf->g_min = st->savedG;
+							conf->b_min = st->savedB;
+						}
+						else	//We are at min
+						{
+							//Restore max
+							conf->r_max = st->savedR;
+							conf->g_max = st->savedG;
+							conf->b_max = st->savedB;
+						}
+						if(conf->mode == LEDSEG_MODE_LOOP || conf->mode == LEDSEG_MODE_LOOP_END)
+						{
+							conf->startDir = st->savedDir;
+						}
+						else if(conf->mode == LEDSEG_MODE_BOUNCE)
+						{
+							conf->startDir = st->fadeDir*-1;
+						}
+						conf->cycles = st->savedCycles;
+						ledSegSetFade(seg,conf);
 					}
-					else	//We are at min
+					else
 					{
-						//Restore max
-						conf->r_max = st->savedR;
-						conf->g_max = st->savedG;
-						conf->b_max = st->savedB;
+						st->fadeState=LEDSEG_FADE_DONE;
 					}
-					if(conf->mode == LEDSEG_MODE_LOOP || conf->mode == LEDSEG_MODE_LOOP_END)
-					{
-						conf->startDir = st->savedDir;
-					}
-					else if(conf->mode == LEDSEG_MODE_BOUNCE)
-					{
-						conf->startDir = st->fadeDir*-1;
-					}
-					conf->cycles = st->savedCycles;
-					ledSegSetFade(seg,conf);
 				}
 				else
 				{
-					st->fadeDone=LED_SEG_FADE_DONE;
+					switch (conf->mode)
+					{
+						case LEDSEG_MODE_BOUNCE:
+						{
+							st->fadeDir*=-1;
+							break;
+						}
+						//Loop and Loop_end works the same
+						case LEDSEG_MODE_LOOP:
+						case LEDSEG_MODE_LOOP_END:
+						{
+							if(st->fadeDir == -1)
+							{
+								st->r=conf->r_max;
+								st->g=conf->g_max;
+								st->b=conf->b_max;
+							}
+							else if(st->fadeDir == 1)
+							{
+								st->r=conf->r_min;
+								st->g=conf->g_min;
+								st->b=conf->b_min;
+							}
+							break;
+						}
+						default:
+						{
+							//For any other mode, do nothing
+							break;
+						}
+					}
+					st->fadeState=LEDSEG_FADE_NOT_DONE;
 				}
-			}
-			else
-			{
-				switch (conf->mode)
+				//Check if ALL segments in the group have finished syncing. If so, reset all of them to NOT_FINISHED (except if they're done)
+				if(segSyncRelease[conf->syncGroup] && checkFadeNotDoneAll(conf->syncGroup))
 				{
-					case LEDSEG_MODE_BOUNCE:
-					{
-						st->fadeDir*=-1;
-						/*if(compColAtMin)
-						{
-							st->fadeDir=1;
-						}
-						else if(compColAtMax)
-						{
-							st->fadeDir=-1;
-						}*/
-						break;
-					}
-					//Loop and Loop_end works the same
-					case LEDSEG_MODE_LOOP:
-					case LEDSEG_MODE_LOOP_END:
-					{
-						if(st->fadeDir==-1)//compColAtMin)
-						{
-							st->r=conf->r_max;
-							st->g=conf->g_max;
-							st->b=conf->b_max;
-						}
-						else if(st->fadeDir==1)//compColAtMax)
-						{
-							st->r=conf->r_min;
-							st->g=conf->g_min;
-							st->b=conf->b_min;
-						}
-						break;
-					}
-					default:
-					{
-						//For any other mode, do nothing
-						break;
-					}
+					segSyncRelease[conf->syncGroup]=false;
 				}
 			}
+
+		}	//End of allReached
+	}
+}
+
+/*
+ * Checks if all the fade animations in the same sync group are ready for sync
+ * If syncgroup=0 (not part of any sync group), it is by definition synced with itself
+ * Note: FADE_DONE is treated as FADE_SYNC_DONE
+ */
+static bool checkSyncReadyFade(uint8_t syncGrp, uint8_t seg)
+{
+	if(!syncGrp)
+	{
+		return true;
+	}
+	bool allState=true;
+	uint8_t firstFound=255;
+	ledSegmentState_t* st;
+	for(uint8_t i=0;i<currentNofSegments;i++)
+	{
+		st=&(segments[i].state);
+		if(st->confFade.syncGroup == syncGrp)
+		{
+			if(firstFound==255)
+			{
+				firstFound=i;
+			}
+			if(st->fadeState != LEDSEG_FADE_WAITING_FOR_SYNC)
+			{
+				allState=false;
+			}
+		}
+	}
+	return (allState && (firstFound==seg));
+}
+
+static bool checkFadeNotDoneAll(uint8_t syncGrp)
+{
+	if(!syncGrp)
+	{
+		return true;;
+	}
+	bool allState=true;
+	ledSegmentState_t* st;
+	for(uint8_t i=0;i<currentNofSegments;i++)
+	{
+		st=&(segments[i].state);
+		if(st->confFade.syncGroup == syncGrp && st->fadeState!=LEDSEG_FADE_NOT_DONE)
+		{
+			allState=false;
+		}
+	}
+	return allState;
+}
+
+/*
+ * This will reset all segments to LEDSEG_FADE_NOT_DONE
+ */
+static void resetSyncDoneGroup(uint8_t syncGrp)
+{
+	ledSegmentState_t* st;
+	for(uint8_t seg=0;seg<currentNofSegments;seg++)
+	{
+		st=&(segments[seg].state);
+		if(st->confFade.syncGroup == syncGrp && st->fadeState!=LEDSEG_FADE_DONE)
+		{
+			st->fadeState=LEDSEG_FADE_NOT_DONE;
 		}
 	}
 }

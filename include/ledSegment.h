@@ -41,9 +41,10 @@ typedef enum
 
 typedef enum
 {
-	LED_SEG_FADE_NOT_DONE,
-	LED_SEG_FADE_DONE,
-	LED_SEG_FADE_WAITING_FOR_SYNC
+	LEDSEG_FADE_NOT_DONE,
+	LEDSEG_FADE_DONE,
+	LEDSEG_FADE_WAITING_FOR_SYNC,
+	LEDSEG_FADE_SYNC_DONE,
 }ledSegmentFadeState_t;
 
 /*
@@ -79,18 +80,19 @@ typedef struct
 	ledSegmentMode_t mode;		//The current mode for this fade
 	//All min/max are the top and bottom values of the colour for all LEDs	TODO: Restructure to have a rgb-min, and rgb-max grouped
 	uint8_t r_min;
-	uint8_t r_max;
 	uint8_t g_min;
-	uint8_t g_max;
 	uint8_t b_min;
+	uint8_t r_max;
+	uint8_t g_max;
 	uint8_t b_max;
 
 	uint32_t fadeTime;				//The time to fade from min to max
 	uint16_t fadePeriodMultiplier;	//This is used for long fades to avoid capping the rate
 	int8_t startDir;				//The direction we shall start in (+1 or -1). Direction 1 will fade all colours from min to max, and -1 will fade from max to min
 	uint32_t cycles;				//If cycles=0, it will run forever (or rather for max uint32 cycles)
-	uint32_t fadeCycles;			//The number of animation cycles that will actually run. Not set by user, but generated during setFade.
+//	uint32_t fadeCycles;			//The number of animation cycles that will actually run. Not set by user, but generated during setFade.
 	uint8_t globalSetting;			//The global setting to be used
+	uint8_t syncGroup;				//Indicates which sync group a fade segment belongs to. All fades of the same syncGroup will sync up at min/max. syncGroup=0 turns this feature off
 
 }ledSegmentFadeSetting_t;
 
@@ -112,9 +114,9 @@ typedef struct
 	int8_t fadeDir;						//The current direction of fade
 	uint16_t cyclesToFadeChange;		//The number of cycles left to fade update (used to emulate fractional rates). This does not need to be set
 	bool fadeActive;					//Indicates if the strip has an active fade
-	ledSegmentFadeState_t fadeDone;		//Indicates if the fade has completed it's cycles, but that fade color shall remain unchanged
+	ledSegmentFadeState_t fadeState;		//Indicates if the fade has completed it's cycles, but that fade color shall remain unchanged
 	ledSegmentFadeSetting_t confFade;	//All information about the fade
-	uint32_t fadeCycle;					//The current cycle of the animation (strictly speaking, this is number of updates left (one cycleFade is much smaller than a setting cycle)
+	uint32_t fadeCycle;					//The current cycle of the animation. This is a full half-cycle (one min->max or vice versa)
 
 	//Storage of settings and states used for fading between two settings (So we can restore this to confFade later)
 	bool switchMode;					//Indicates that we are currently switching between fade settings
