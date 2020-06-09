@@ -176,6 +176,7 @@ bool ledSegSetFade(uint8_t seg, ledSegmentFadeSetting_t* fs)
 		{
 			ledSegSetFade(i,fs);
 		}
+		return true;
 	}
 	//Create some temp variables that are easier to use
 	ledSegment_t* sg;
@@ -295,6 +296,7 @@ bool ledSegSetPulse(uint8_t seg, ledSegmentPulseSetting_t* ps)
 		{
 			ledSegSetPulse(i,ps);
 		}
+		return true;
 	}
 	//Create some temp variables that are easier to use
 	ledSegment_t* sg;
@@ -375,6 +377,7 @@ bool ledSegClearFade(uint8_t seg)
 		{
 			ledSegClearFade(i);
 		}
+		return true;
 	}
 	ledSegment_t st;
 
@@ -403,6 +406,7 @@ bool ledSegClearPulse(uint8_t seg)
 		{
 			ledSegClearPulse(i);
 		}
+		return true;
 	}
 	ledSegment_t st;
 
@@ -429,6 +433,7 @@ bool ledSegSetFadeMode(uint8_t seg, ledSegmentMode_t mode)
 		{
 			ledSegSetFadeMode(i,mode);
 		}
+		return true;
 	}
 	segments[seg].state.confFade.mode=mode;
 	return true;
@@ -450,6 +455,7 @@ bool ledSegSetPulseMode(uint8_t seg, ledSegmentMode_t mode)
 		{
 			ledSegSetPulseMode(i,mode);
 		}
+		return true;
 	}
 	segments[seg].state.confPulse.mode=mode;
 	return true;
@@ -510,6 +516,7 @@ bool ledSegSetPulseActiveState(uint8_t seg, bool state)
 		{
 			ledSegSetPulseActiveState(i,state);
 		}
+		return true;
 	}
 	segments[seg].state.pulseActive=state;
 	return true;
@@ -542,6 +549,7 @@ bool ledSegSetFadeActiveState(uint8_t seg, bool state)
 		{
 			ledSegSetFadeActiveState(i,state);
 		}
+		return true;
 	}
 	segments[seg].state.fadeActive=state;
 	return true;
@@ -620,6 +628,7 @@ bool ledSegRestart(uint8_t seg, bool restartFade, bool restartPulse)
 		{
 			ledSegRestart(i,restartFade,restartPulse);
 		}
+		return true;
 	}
 	ledSegmentState_t* st=&segments[seg].state;
 	if(restartFade)
@@ -671,6 +680,7 @@ bool ledSegSetGlobal(uint8_t seg, uint8_t fadeGlobal, uint8_t pulseGlobal)
 		{
 			ledSegSetGlobal(i,fadeGlobal,pulseGlobal);
 		}
+		return true;
 	}
 	segments[seg].state.confFade.globalSetting=fadeGlobal;
 	segments[seg].state.confPulse.globalSetting=pulseGlobal;
@@ -744,7 +754,6 @@ void ledSegSetModeChange(ledSegmentFadeSetting_t* fs, uint8_t seg, bool switchAt
  * Note: no calculations are done while the strips are updating (the DMA is running).
  *	 Otherwise, we would need to keep two copies of the whole pixel map, costing about 3kB of additional RAM
  *
- *	 Todo: Add fade switch mode
  *	 Add an option in fadeSetting or a state in fadeState.
  *	 The fade state or conf will need to remember some parts of the fade setting (the min colours, that it's fade, and the number of cycles)
  *	 Set up the fade as normal, but create that special setting that allows fade between two colours and one cycle.
@@ -955,7 +964,7 @@ static void pulseCalcAndSet(uint8_t seg)
 			{
 				for(uint16_t i=0;i<ps->pixelsPerIteration;i++)
 				{
-					//Todo: This method might generate LEDs that are already lit. To avoid this, we would need to look through the entire buffer for each new LED. Sorting might help here
+					//Todo: This method might generate LEDs that are already lit. To avoid this, we would need to look through the entire buffer for each new LED. Sorting might help here. Don't this unless really needed.
 					//Generate a random LED
 					if(st->pulseDir==-1)
 					{
@@ -1429,7 +1438,6 @@ static void fadeCalcColour(uint8_t seg)
 					segSyncRelease[conf->syncGroup]=false;
 				}
 			}
-
 		}	//End of allReached
 	}
 }

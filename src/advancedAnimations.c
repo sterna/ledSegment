@@ -17,6 +17,11 @@
  */
 
 
+/*
+ * Animation sequencing
+ * 1. Store a
+ */
+
 #include "advancedAnimations.h"
 
 const RGB_t simpleColours[SIMPLE_COL_NOF_COLOURS]=
