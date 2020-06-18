@@ -19,10 +19,20 @@
 
 /*
  * Animation sequencing
- * 1. Store a
+ * Setup:
+ * 1. Store a series of settings (fade and pulse) in a list. Include the length of list and mode (loop list/end list). These settings are stored per segment or sync group
+ * 2. Load the first settings for all
+ *
+ * Loop
+ * 1. Check which mode is used
+ * 2. Check if all fades in sync group are properly done.
+ * 3. Load the next setting in the sequence to all segments using it.
+ * 4. Increment setting counter (with wrap around)
  */
 
 #include "advancedAnimations.h"
+
+static prideCols_t animLoadNextRainbowWheel(ledSegmentFadeSetting_t* fs, uint8_t seg, prideCols_t colIndex);
 
 const RGB_t simpleColours[SIMPLE_COL_NOF_COLOURS]=
 {
@@ -33,6 +43,17 @@ const RGB_t simpleColours[SIMPLE_COL_NOF_COLOURS]=
 	{0,255,255},		//Cyan
 	{255,255,0},		//Yellow
 	{255,255,255}		//White
+};
+
+
+const RGB_t prideColours[PRIDE_COL_NOF_COLOURS]=
+{
+	{0xE7,0,0},			//Red
+	{0xFF,0x8C,0},		//Orange
+	{0xFF,0xEF,0},		//Yellow
+	{0,0x81,0x1F},		//Green
+	{0,0x44,0xFF},		//Indigo
+	{0x76,0,0x89},		//Red
 };
 
 /*
@@ -182,6 +203,79 @@ void animSetModeChange(simpleCols_t col, ledSegmentFadeSetting_t* fs, uint8_t se
 	*/
 }
 
+static bool prideWheelActive=false;
+static bool prideWheelDone=false;
+static ledSegmentFadeSetting_t prideWheelSetting;
+static uint8_t prideWheelSeg=0;
+static prideCols_t prideWheelIndex=0;
+static uint32_t prideCycles=0;
+
+/*
+ * Sets up a rainbow wheel fade given the settings given. Only the following settings are valid:
+ * - Global setting (normal min/max scale is not possible, since these are set colour ratios)
+ * - Cycles (one cycle is one full cycle through the whole rainbow)
+ * - FadeTime (the time it takes to from one colour to the next)
+ * - syncGroup
+ * All other settings are generated internally and overwritten.
+ *
+ * Procedure:
+ *  1. Load a fade the goes from colour 0 to colour 1.
+ *  2. Setup a mode change to this setting.
+ *  3. When fade is done, we are AT colour 1. Then, setup the next fade as in step 1, but fade from colour 2 to 3.
+ *
+ */
+void animSetPrideWheel(ledSegmentFadeSetting_t* fs, uint8_t seg)
+{
+	//Copy setting and setup for rainbow wheel (
+	memcpy(&prideWheelSetting,fs,sizeof(ledSegmentFadeSetting_t));
+	prideCycles=PRIDE_COL_NOF_COLOURS*fs->cycles;
+	//Min/Max scale doesn't matter, as we only do one cycle
+	prideWheelIndex=animLoadNextRainbowWheel(&prideWheelSetting,seg,PRIDE_COL_RED);
+	prideWheelSeg=seg;
+	prideWheelActive=true;
+	prideWheelDone=false;
+}
+
+/*
+ * Loads the next colour into the fade setting for pride wheel
+ */
+static prideCols_t animLoadNextRainbowWheel(ledSegmentFadeSetting_t* fs, uint8_t seg, prideCols_t colIndex)
+{
+	const RGB_t* tmpCol1=&prideColours[colIndex];
+	colIndex=utilIncLoopSimple(colIndex,(PRIDE_COL_NOF_COLOURS-1));
+	const RGB_t* tmpCol2=&prideColours[colIndex];
+	colIndex=utilIncLoopSimple(colIndex,(PRIDE_COL_NOF_COLOURS-1));
+	fs->r_min=tmpCol1->r;
+	fs->g_min=tmpCol1->g;
+	fs->b_min=tmpCol1->b;
+	fs->r_max=tmpCol2->r;
+	fs->g_max=tmpCol2->g;
+	fs->b_max=tmpCol2->b;
+	fs->startDir=1;
+	fs->cycles=1;
+	fs->mode=LEDSEG_MODE_LOOP_END;
+	//Since both colours are already loaded, animSetModeChange shall not load any new colour.
+	//We need to switch at max, since there's only one fade cycle going from min to max (and then a new switch is loaded)
+	animSetModeChange(SIMPLE_COL_NO_CHANGE,fs,seg,false,0,255);
+	return colIndex;
+}
+
+/*
+ * Returns true if pridewheel is done
+ */
+bool animPrideWheelGetDone()
+{
+	return prideWheelDone;
+}
+
+/*
+ * Turns the pride wheel on/off
+ */
+void animSetPrideWheelState(bool active)
+{
+	prideWheelActive=active;
+}
+
 /*
  * The main task that handles all time stepping things
  * that I didn't want to put into the regular ledSegment loop
@@ -194,6 +288,42 @@ void animTask()
 		return;
 	}
 	nextCallTime=systemTime+ANIM_TASK_PERIOD;
+
+	//Rainbow wheel generation
+	if(prideWheelActive)
+	{
+		if(ledSegGetFadeDone(prideWheelSeg))
+		{
+			prideWheelIndex=animLoadNextRainbowWheel(&prideWheelSetting,prideWheelSeg,prideWheelIndex);
+			if(prideCycles)
+			{
+				if(prideCycles<=2)
+				{
+					prideCycles=0;
+					prideWheelActive=false;
+					prideWheelDone=true;
+				}
+				else
+				{
+					prideCycles-=2;
+				}
+			}
+		}
+	}
+	/*
+	 * Setup:
+	 * 	Load first colour in sequence as fromTo with fade_end
+	 * 	Remember to setup sync groups
+	 * 	Set rainbow wheel as true
+	 *
+	 * Loop:
+	 * Check if in rainbow wheel mode
+	 * 		Check if fade is done
+	 * 			Load next colour in sequence as fromTo with fade_end
+	 * 			Set next colour
+	 * 			increment segment with wraparound
+	 */
+
 
 	/*
 	 *  *	case SMODE_STAD_I_LJUS:

@@ -90,7 +90,7 @@ static bool checkCycleCounter(uint32_t* cycle);
 static bool checkCycleCounterU16(uint16_t* cycle);
 static bool isGlitterMode(ledSegmentMode_t mode);
 static bool checkSyncReadyFade(uint8_t syncGrp, uint8_t seg);
-static bool checkFadeNotDoneAll(uint8_t syncGrp);
+static bool checkFadeNotWaitingForSyncAll(uint8_t syncGrp);
 static void resetSyncDoneGroup(uint8_t syncGrp);
 
 
@@ -147,11 +147,23 @@ bool ledSegGetState(uint8_t seg, ledSegment_t* state)
 }
 
 /*
- * Returns true if a led segment exists
+ * Returns true if a led segment exists. Includes LEDSEG_ALL
  */
 bool ledSegExists(uint8_t seg)
 {
 	if(seg<currentNofSegments || seg==LEDSEG_ALL)
+	{
+		return true;
+	}
+	return false;
+}
+
+/*
+ * Returns true if a led segment exists.
+ */
+bool ledSegExistsNotAll(uint8_t seg)
+{
+	if(seg<currentNofSegments)
 	{
 		return true;
 	}
@@ -469,7 +481,7 @@ bool ledSegSetPulseMode(uint8_t seg, ledSegmentMode_t mode)
  */
 bool ledSegSetLed(uint8_t seg, uint16_t led, uint8_t r, uint8_t g, uint8_t b)
 {
-	if(!ledSegExists(seg))
+	if(!ledSegExistsNotAll(seg))
 	{
 		return false;
 	}
@@ -531,6 +543,17 @@ bool ledSegGetPulseActiveState(uint8_t seg)
 	{
 		return false;
 	}
+	if(seg==LEDSEG_ALL)
+	{
+		for(uint8_t i=0;i<currentNofSegments;i++)
+		{
+			if(!ledSegGetPulseActiveState(i))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
 	return segments[seg].state.pulseActive;
 }
 
@@ -564,6 +587,17 @@ bool ledSegGetFadeActiveState(uint8_t seg)
 	{
 		return false;
 	}
+	if(seg==LEDSEG_ALL)
+	{
+		for(uint8_t i=0;i<currentNofSegments;i++)
+		{
+			if(!ledSegGetFadeActiveState(i))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
 	return segments[seg].state.fadeActive;
 }
 
@@ -576,7 +610,52 @@ bool ledSegGetFadeDone(uint8_t seg)
 	{
 		return false;
 	}
+	if(seg==LEDSEG_ALL)
+	{
+		for(uint8_t i=0;i<currentNofSegments;i++)
+		{
+			if(!ledSegGetFadeDone(i))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
 	return (segments[seg].state.fadeState==LEDSEG_FADE_DONE);
+}
+
+/*
+ * Returns the sync group a segment is part of (will return 0 if not part of any sync group)
+ */
+uint8_t ledSegGetSyncGroup(uint8_t seg)
+{
+	if(!ledSegExistsNotAll(seg))
+	{
+		return 0;
+	}
+	return segments[seg].state.confFade.syncGroup;
+}
+
+/*
+ * Checks if all fades within
+ * If the segment is not part of any sync group (if it's ==0) it's considered done
+ */
+bool ledSegGetSyncGroupDone(uint8_t syncGrp)
+{
+	if(!syncGrp)
+	{
+		return true;
+	}
+	ledSegmentState_t* st;
+	for(uint8_t i=0;i<currentNofSegments;i++)
+	{
+		st=&(segments[i].state);
+		if(st->confFade.syncGroup == syncGrp && st->fadeState !=LEDSEG_FADE_DONE)
+		{
+			return false;
+		}
+	}
+	return true;
 }
 
 /*
@@ -587,6 +666,17 @@ bool ledSegGetPulseDone(uint8_t seg)
 	if(!ledSegExists(seg))
 	{
 		return false;
+	}
+	if(seg==LEDSEG_ALL)
+	{
+		for(uint8_t i=0;i<currentNofSegments;i++)
+		{
+			if(!ledSegGetPulseDone(i))
+			{
+				return false;
+			}
+		}
+		return true;
 	}
 	return segments[seg].state.pulseDone;
 }
@@ -601,6 +691,14 @@ bool ledSegSetPulseSpeed(uint8_t seg, uint16_t time, uint16_t ppi)
 	if(!ledSegExists(seg))
 	{
 		return false;
+	}
+	if(seg==LEDSEG_ALL)
+	{
+		for(uint8_t i=0;i<currentNofSegments;i++)
+		{
+			ledSegSetPulseSpeed(i,time,ppi);
+		}
+		return true;
 	}
 	if(time)
 	{
@@ -1433,7 +1531,7 @@ static void fadeCalcColour(uint8_t seg)
 					st->fadeState=LEDSEG_FADE_NOT_DONE;
 				}
 				//Check if ALL segments in the group have finished syncing. If so, reset all of them to NOT_FINISHED (except if they're done)
-				if(segSyncRelease[conf->syncGroup] && checkFadeNotDoneAll(conf->syncGroup))
+				if(segSyncRelease[conf->syncGroup] && checkFadeNotWaitingForSyncAll(conf->syncGroup))
 				{
 					segSyncRelease[conf->syncGroup]=false;
 				}
@@ -1474,18 +1572,22 @@ static bool checkSyncReadyFade(uint8_t syncGrp, uint8_t seg)
 	return (allState && (firstFound==seg));
 }
 
-static bool checkFadeNotDoneAll(uint8_t syncGrp)
+/*
+ * Returns true if all none of the fades in a sync group are not in Waiting_for_sync
+ * This is used to detect if they have already synced
+ */
+static bool checkFadeNotWaitingForSyncAll(uint8_t syncGrp)
 {
 	if(!syncGrp)
 	{
-		return true;;
+		return true;
 	}
 	bool allState=true;
 	ledSegmentState_t* st;
 	for(uint8_t i=0;i<currentNofSegments;i++)
 	{
 		st=&(segments[i].state);
-		if(st->confFade.syncGroup == syncGrp && st->fadeState!=LEDSEG_FADE_NOT_DONE)
+		if(st->confFade.syncGroup == syncGrp && st->fadeState==LEDSEG_FADE_WAITING_FOR_SYNC)
 		{
 			allState=false;
 		}

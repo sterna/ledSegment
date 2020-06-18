@@ -87,9 +87,9 @@ typedef struct
 	uint8_t b_max;
 
 	uint32_t fadeTime;				//The time to fade from min to max
-	uint16_t fadePeriodMultiplier;	//This is used for long fades to avoid capping the rate
+	uint16_t fadePeriodMultiplier;	//This is used for long fades to avoid capping the rate (not set by user)
 	int8_t startDir;				//The direction we shall start in (+1 or -1). Direction 1 will fade all colours from min to max, and -1 will fade from max to min
-	uint32_t cycles;				//If cycles=0, it will run forever (or rather for max uint32 cycles)
+	uint32_t cycles;				//The number of half-cycles (min->max is one cycle). If cycles=0, it will run forever (or rather for max uint32 cycles, which is kinda forever)
 //	uint32_t fadeCycles;			//The number of animation cycles that will actually run. Not set by user, but generated during setFade.
 	uint8_t globalSetting;			//The global setting to be used
 	uint8_t syncGroup;				//Indicates which sync group a fade segment belongs to. All fades of the same syncGroup will sync up at min/max. syncGroup=0 turns this feature off
@@ -162,6 +162,7 @@ typedef struct
 
 uint8_t ledSegInitSegment(uint8_t strip, uint16_t start, uint16_t stop, bool invertPulse, ledSegmentPulseSetting_t* pulse, ledSegmentFadeSetting_t* fade);
 bool ledSegExists(uint8_t seg);
+bool ledSegExistsNotAll(uint8_t seg);
 bool ledSegSetPulse(uint8_t seg, ledSegmentPulseSetting_t* ps);
 bool ledSegSetFade(uint8_t seg, ledSegmentFadeSetting_t* fs);
 void ledSegRunIteration();
@@ -171,6 +172,8 @@ bool ledSegSetLed(uint8_t seg, uint16_t led, uint8_t r, uint8_t g, uint8_t b);
 bool ledSegSetLedWithGlobal(uint8_t seg, uint16_t led, uint8_t r, uint8_t g, uint8_t b,uint8_t global);
 
 bool ledSegGetState(uint8_t seg, ledSegment_t* state);
+bool ledSegGetSyncGroupDone(uint8_t syncGrp);
+uint8_t ledSegGetSyncGroup(uint8_t seg);
 bool ledSegGetPulseActiveState(uint8_t seg);
 bool ledSegSetPulseActiveState(uint8_t seg, bool state);
 bool ledSegGetFadeActiveState(uint8_t seg);
