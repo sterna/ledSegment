@@ -49,30 +49,48 @@ const RGB_t simpleColours[SIMPLE_COL_NOF_COLOURS]=
 const RGB_t prideColours[PRIDE_COL_NOF_COLOURS]=
 {
 	{0xE7,0,0},			//Red
-	{0xFF,0x8C,0},		//Orange
+	{0xFF,0x60,0},		//Orange
 	{0xFF,0xEF,0},		//Yellow
-	{0,0x81,0x1F},		//Green
-	{0,0x44,0xFF},		//Indigo
-	{0x76,0,0x89},		//Red
+	{0,0xFF,0x20},		//Green
+	{0,0x20,0xFF},		//Indigo
+	{0x76,0,0x79},		//Purple
 };
 
 /*
  * Returns a given simple colour
+ * If normalize is given as larger than 0, the colour will be normalized to produce a total output of that value
  */
-RGB_t animGetColour(simpleCols_t col)
+RGB_t animGetColour(simpleCols_t col, uint8_t normalize)
 {
+	RGB_t temp={0,0,0};
 	if(col == SIMPLE_COL_RANDOM)
 	{
-		return simpleColours[utilRandRange(SIMPLE_COL_NOF_COLOURS-1)];
-	}
-	else if(col >= SIMPLE_COL_NOF_COLOURS)
-	{
-		return (RGB_t){0,0,0};
+		temp=simpleColours[utilRandRange(SIMPLE_COL_NOF_COLOURS-1)];
 	}
 	else
 	{
-		return simpleColours[col];
+		temp=simpleColours[col];
 	}
+	if(normalize>0)
+	{
+		return animNormalizeColours(&temp,normalize);
+	}
+	return temp;
+}
+
+/*
+ * Normalizes the given colour to the given maximum power output.
+ * That is, the sum of the power of all colours shall be the given normalVal.
+ * This ensures that all combinations of colours are the same total PWM
+ */
+RGB_t animNormalizeColours(const RGB_t* cols, uint8_t normalVal)
+{
+	uint32_t totalLight=cols->r + cols->g + cols->b;
+	RGB_t tmpCols;
+	tmpCols.r=(uint8_t)utilScale(cols->r,totalLight,normalVal);
+	tmpCols.g=(uint8_t)utilScale(cols->g,totalLight,normalVal);
+	tmpCols.b=(uint8_t)utilScale(cols->b,totalLight,normalVal);
+	return tmpCols;
 }
 
 /*
@@ -81,7 +99,7 @@ RGB_t animGetColour(simpleCols_t col)
  */
 void animLoadLedSegFadeColour(simpleCols_t col,ledSegmentFadeSetting_t* st, uint8_t minScale, uint8_t maxScale)
 {
-	RGB_t tmpCol=animGetColour(col);
+	RGB_t tmpCol=animGetColour(col,0);
 	st->r_max = (uint8_t)utilScale(tmpCol.r,255,maxScale);
 	st->r_min = (uint8_t)utilScale(tmpCol.r,255,minScale);
 	st->g_max = (uint8_t)utilScale(tmpCol.g,255,maxScale);
@@ -95,10 +113,14 @@ void animLoadLedSegFadeColour(simpleCols_t col,ledSegmentFadeSetting_t* st, uint
  */
 void animLoadLedSegPulseColour(simpleCols_t col,ledSegmentPulseSetting_t* st, uint8_t maxScale)
 {
-	RGB_t tmpCol=animGetColour(col);
-	st->r_max = (uint8_t)utilScale(tmpCol.r,255,maxScale);
+	RGB_t tmpCol=animGetColour(col,maxScale);
+	st->r_max = tmpCol.r;
+	st->g_max = tmpCol.g;
+	st->b_max = tmpCol.b;
+
+	/*st->r_max = (uint8_t)utilScale(tmpCol.r,255,maxScale);
 	st->g_max = (uint8_t)utilScale(tmpCol.g,255,maxScale);
-	st->b_max = (uint8_t)utilScale(tmpCol.b,255,maxScale);
+	st->b_max = (uint8_t)utilScale(tmpCol.b,255,maxScale);*/
 }
 
 /*
@@ -107,14 +129,21 @@ void animLoadLedSegPulseColour(simpleCols_t col,ledSegmentPulseSetting_t* st, ui
  */
 void animLoadLedSegFadeBetweenColours(simpleCols_t colFrom, simpleCols_t colTo, ledSegmentFadeSetting_t* st, uint8_t fromScale, uint8_t toScale)
 {
-	RGB_t from=animGetColour(colFrom);
-	RGB_t to=animGetColour(colTo);
-	st->r_min = (uint8_t)utilScale(from.r,255,fromScale);
+	RGB_t from=animGetColour(colFrom,fromScale);
+	RGB_t to=animGetColour(colTo,toScale);
+	st->r_min = from.r;
+	st->r_max = to.r;
+	st->g_min = from.g;
+	st->g_max = to.g;
+	st->b_min = from.b;
+	st->b_max = to.b;
+
+	/*st->r_min = (uint8_t)utilScale(from.r,255,fromScale);
 	st->r_max = (uint8_t)utilScale(to.r,255,toScale);
 	st->g_min = (uint8_t)utilScale(from.g,255,fromScale);
 	st->g_max = (uint8_t)utilScale(to.g,255,toScale);
 	st->b_min = (uint8_t)utilScale(from.b,255,fromScale);
-	st->b_max = (uint8_t)utilScale(to.b,255,toScale);
+	st->b_max = (uint8_t)utilScale(to.b,255,toScale);*/
 	/*
 	ledSegmentFadeSetting_t settingFrom;
 	ledSegmentFadeSetting_t settingTo;
@@ -241,16 +270,16 @@ void animSetPrideWheel(ledSegmentFadeSetting_t* fs, uint8_t seg)
  */
 static prideCols_t animLoadNextRainbowWheel(ledSegmentFadeSetting_t* fs, uint8_t seg, prideCols_t colIndex)
 {
-	const RGB_t* tmpCol1=&prideColours[colIndex];
+	const RGB_t tmpCol1=animNormalizeColours(&prideColours[colIndex],255);
 	colIndex=utilIncLoopSimple(colIndex,(PRIDE_COL_NOF_COLOURS-1));
-	const RGB_t* tmpCol2=&prideColours[colIndex];
+	const RGB_t tmpCol2=animNormalizeColours(&prideColours[colIndex],255);
 	colIndex=utilIncLoopSimple(colIndex,(PRIDE_COL_NOF_COLOURS-1));
-	fs->r_min=tmpCol1->r;
-	fs->g_min=tmpCol1->g;
-	fs->b_min=tmpCol1->b;
-	fs->r_max=tmpCol2->r;
-	fs->g_max=tmpCol2->g;
-	fs->b_max=tmpCol2->b;
+	fs->r_min=tmpCol1.r;
+	fs->g_min=tmpCol1.g;
+	fs->b_min=tmpCol1.b;
+	fs->r_max=tmpCol2.r;
+	fs->g_max=tmpCol2.g;
+	fs->b_max=tmpCol2.b;
 	fs->startDir=1;
 	fs->cycles=1;
 	fs->mode=LEDSEG_MODE_LOOP_END;
