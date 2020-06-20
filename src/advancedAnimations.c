@@ -79,6 +79,21 @@ RGB_t animGetColour(simpleCols_t col, uint8_t normalize)
 }
 
 /*
+ * Returns the a colour from the pride list
+ * If normalize is given as larger than 0, the colour will be normalized to produce a total output of that value
+ */
+RGB_t animGetColourPride(prideCols_t col, uint8_t normalize)
+{
+	RGB_t temp={0,0,0};
+	temp=prideColours[col];
+	if(normalize>0)
+	{
+		return animNormalizeColours(&temp,normalize);
+	}
+	return temp;
+}
+
+/*
  * Normalizes the given colour to the given maximum power output.
  * That is, the sum of the power of all colours shall be the given normalVal.
  * This ensures that all combinations of colours are the same total PWM
@@ -99,7 +114,7 @@ RGB_t animNormalizeColours(const RGB_t* cols, uint8_t normalVal)
  */
 void animLoadLedSegFadeColour(simpleCols_t col,ledSegmentFadeSetting_t* st, uint8_t minScale, uint8_t maxScale)
 {
-	RGB_t tmpCol=animGetColour(col,0);
+	RGB_t tmpCol=animGetColour(col,255);
 	st->r_max = (uint8_t)utilScale(tmpCol.r,255,maxScale);
 	st->r_min = (uint8_t)utilScale(tmpCol.r,255,minScale);
 	st->g_max = (uint8_t)utilScale(tmpCol.g,255,maxScale);
@@ -270,9 +285,9 @@ void animSetPrideWheel(ledSegmentFadeSetting_t* fs, uint8_t seg)
  */
 static prideCols_t animLoadNextRainbowWheel(ledSegmentFadeSetting_t* fs, uint8_t seg, prideCols_t colIndex)
 {
-	const RGB_t tmpCol1=animNormalizeColours(&prideColours[colIndex],255);
+	const RGB_t tmpCol1=animGetColourPride(colIndex,255);//animNormalizeColours(&prideColours[colIndex],255);
 	colIndex=utilIncLoopSimple(colIndex,(PRIDE_COL_NOF_COLOURS-1));
-	const RGB_t tmpCol2=animNormalizeColours(&prideColours[colIndex],255);
+	const RGB_t tmpCol2=animGetColourPride(colIndex,255);
 	colIndex=utilIncLoopSimple(colIndex,(PRIDE_COL_NOF_COLOURS-1));
 	fs->r_min=tmpCol1.r;
 	fs->g_min=tmpCol1.g;

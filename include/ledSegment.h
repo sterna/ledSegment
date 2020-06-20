@@ -69,6 +69,7 @@ typedef struct
 	uint16_t pixelTime;				//The number of multiples of LEDSEG_UPDATE_PERIOD_TIME between moving the pulse forward. Glitter: The number of ms for a complete fade.
 	uint32_t cycles;				//If cycles=0, it will run forever. Cycles only has effect in MODE_LOOP_END
 	uint8_t globalSetting;			//The global setting to be used
+	bool rainbowColour;
 
 }ledSegmentPulseSetting_t;
 
@@ -130,7 +131,7 @@ typedef struct
 
 	//Pulse state
 	int8_t pulseDir;					//The wander direction for the LED
-	uint16_t currentLed;				//The current first LED in the pulse (the most faded LED before the start of max). Current LED is absolute relative to the strip
+	uint16_t currentLed;				//The current first LED in the pulse (the most faded LED before the start of max). Current LED is absolute relative to the strip. In glitter mode, this is the number of lit LEDs
 	uint16_t cyclesToPulseMove;			//The number of cycles left to pulse movement. For glitter mode, this is the number of cycles until the fade for each subsegment is done
 	uint32_t pulseCycle;				//The current cycle of the animation
 	bool pulseActive;					//Indicates if the strip has an active pulse

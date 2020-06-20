@@ -75,6 +75,7 @@
 
 #include "ledSegment.h"
 #include "stdlib.h"
+#include "advancedAnimations.h"
 
 //-----------Internal variables--------//
 //Contains all information for all virtual LED segments
@@ -927,7 +928,7 @@ void ledSegRunIteration()
 /*
  * Calculate the colour of a led faded in a pulse
  * led is the led within the pulse, counted from currentLed (the first LED with a colour).
- * led is indexed from meaning (meaning currentLed has value 1)
+ * led is indexed from reality (meaning currentLed has value 1, and that the lowest value is 1)
  */
 static uint8_t pulseCalcColourPerLed(ledSegmentState_t* st,uint16_t led, colour_t col)
 {
@@ -939,6 +940,25 @@ static uint8_t pulseCalcColourPerLed(ledSegmentState_t* st,uint16_t led, colour_
 	}pulsePart_t;
 	ledSegmentPulseSetting_t* ps;
 	ps=&(st->confPulse);
+	RGB_t RGBMaxTmp;
+
+	if(ps->rainbowColour)
+	{
+		uint16_t ledsPerColour=(ps->ledsFadeBefore+ps->ledsMaxPower+ps->ledsFadeAfter)/PRIDE_COL_NOF_COLOURS;
+		//If the pulse is shorter than PRIDE_COL_NOF_COLOURS, this will not work well
+		if(ledsPerColour<1)
+		{
+			ledsPerColour=1;
+		}
+		uint16_t colIndex=((led-1)/ledsPerColour)%PRIDE_COL_NOF_COLOURS;
+		RGBMaxTmp=animGetColourPride((prideCols_t)colIndex,255);
+	}
+	else
+	{
+		RGBMaxTmp.r=ps->r_max;
+		RGBMaxTmp.g=ps->g_max;
+		RGBMaxTmp.b=ps->b_max;
+	}
 	uint8_t tmpCol=0;
 	uint8_t tmpMax=0;
 	uint8_t tmpMin=0;
@@ -958,15 +978,18 @@ static uint8_t pulseCalcColourPerLed(ledSegmentState_t* st,uint16_t led, colour_
 	switch(col)
 	{
 		case COL_RED:
-			tmpMax=ps->r_max;
+//			tmpMax=ps->r_max;
+			tmpMax=RGBMaxTmp.r;
 			tmpMin=st->r;
 		break;
 		case COL_GREEN:
-			tmpMax=ps->g_max;
+//			tmpMax=ps->g_max;
+			tmpMax=RGBMaxTmp.g;
 			tmpMin=st->g;
 			break;
 		case COL_BLUE:
-			tmpMax=ps->b_max;
+//			tmpMax=ps->b_max;
+			tmpMax=RGBMaxTmp.b;
 			tmpMin=st->b;
 			break;
 	}
@@ -1006,7 +1029,6 @@ static void pulseCalcAndSet(uint8_t seg)
 	{
 		return;
 	}
-
 	//Extract useful information
 	st=&(segments[seg].state);
 	ps=&(st->confPulse);
@@ -1015,6 +1037,7 @@ static void pulseCalcAndSet(uint8_t seg)
 	strip=segments[seg].strip;
 	pulseLength=ps->ledsFadeAfter+ps->ledsFadeBefore+ps->ledsMaxPower;
 	uint16_t glitterTotal=ps->ledsMaxPower+ps->pixelsPerIteration;
+	bool glitterJustGenerated=false;
 	//Move LED and update direction
 	//Check if it's time to move a pixel
 	if(checkCycleCounterU16(&st->cyclesToPulseMove))
@@ -1101,19 +1124,7 @@ static void pulseCalcAndSet(uint8_t seg)
 						st->pulseDir=1;
 					}
 				}
-				if(ps->mode == LEDSEG_MODE_GLITTER_BOUNCE && st->pulseDir==-1)
-				{
-					st->glitterR=ps->r_max;
-					st->glitterG=ps->g_max;
-					st->glitterB=ps->b_max;
-				}
-				else
-				{
-					//Reset fade colour to 0, to start a new fade cycle
-					st->glitterR=0;
-					st->glitterG=0;
-					st->glitterB=0;
-				}
+				glitterJustGenerated=true;
 			}
 		}
 		else
@@ -1123,24 +1134,27 @@ static void pulseCalcAndSet(uint8_t seg)
 		}
 		st->cyclesToPulseMove = ps->pixelTime;
 
-	}
+	}//End of Cycles to move
+
 	//Glitter mode:
 	if(isGlitterMode(ps->mode))
 	{
-		//Update colour
-		//Todo: consider if we want to introduce direction in some way
-		st->glitterR=utilIncWithDir(st->glitterR,st->pulseDir,ps->r_max/ps->pixelTime,0,ps->r_max);
-		st->glitterG=utilIncWithDir(st->glitterG,st->pulseDir,ps->g_max/ps->pixelTime,0,ps->g_max);
-		st->glitterB=utilIncWithDir(st->glitterB,st->pulseDir,ps->b_max/ps->pixelTime,0,ps->b_max);
-
 		//Load the current index of the ring buffer
 		uint16_t currentIndex=st->currentLed;
+
+		//Calculate how many leds per colout for rainbowMode
+		uint16_t ledsPerCol=0;
+		if(ps->rainbowColour)
+		{
+			ledsPerCol=(stop-start)/PRIDE_COL_NOF_COLOURS;
+		}
 		//This will only be false in a mode
 		if(currentIndex<glitterTotal)
 		{
 			//Go through the ring buffer in reverse, setting all fade LEDs to the proper colour
 			for(uint16_t i=0;i<ps->pixelsPerIteration;i++)
 			{
+				//Get which LED it is
 				if(currentIndex>0)
 				{
 					currentIndex--;
@@ -1149,7 +1163,42 @@ static void pulseCalcAndSet(uint8_t seg)
 				{
 					currentIndex=glitterTotal-1;
 				}
-				ledSegSetLedWithGlobal(seg,st->glitterActiveLeds[currentIndex],st->glitterR,st->glitterG,st->glitterB,ps->globalSetting);
+				uint16_t ledIndex=st->glitterActiveLeds[currentIndex];
+				RGB_t RGBMaxTmp;
+				if(ps->rainbowColour)
+				{
+					uint16_t colIndex=((ledIndex-1)/ledsPerCol)%PRIDE_COL_NOF_COLOURS;
+					RGBMaxTmp=animGetColourPride((prideCols_t)colIndex,255);
+				}
+				else
+				{
+					RGBMaxTmp.r=ps->r_max;
+					RGBMaxTmp.g=ps->g_max;
+					RGBMaxTmp.b=ps->b_max;
+				}
+				//Only reset the colour if new LEDs were just generated
+				if(glitterJustGenerated)
+				{
+					if(ps->mode == LEDSEG_MODE_GLITTER_BOUNCE && st->pulseDir==-1)
+					{
+						st->glitterR=RGBMaxTmp.r;
+						st->glitterG=RGBMaxTmp.g;
+						st->glitterB=RGBMaxTmp.b;
+					}
+					else
+					{
+						//Reset fade colour to 0, to start a new fade cycle
+						st->glitterR=st->r;
+						st->glitterG=st->g;
+						st->glitterB=st->b;
+					}
+				}
+				//Update colour
+				//Todo: consider if we want to introduce direction in some way
+				st->glitterR=utilIncWithDir(st->glitterR,st->pulseDir,RGBMaxTmp.r/ps->pixelTime,st->r,RGBMaxTmp.r);
+				st->glitterG=utilIncWithDir(st->glitterG,st->pulseDir,RGBMaxTmp.g/ps->pixelTime,st->g,RGBMaxTmp.g);
+				st->glitterB=utilIncWithDir(st->glitterB,st->pulseDir,RGBMaxTmp.b/ps->pixelTime,st->b,RGBMaxTmp.b);
+				ledSegSetLedWithGlobal(seg,ledIndex,st->glitterR,st->glitterG,st->glitterB,ps->globalSetting);
 			}
 		}
 		//Traverse the buffer in reverse from the point stopped
@@ -1163,15 +1212,30 @@ static void pulseCalcAndSet(uint8_t seg)
 			{
 				currentIndex=glitterTotal-1;
 			}
+			//Get which LED it is
+			uint16_t ledIndex=st->glitterActiveLeds[currentIndex];
 			//An LED with number 0 indicates that this is something we have not handled yet
-			if(st->glitterActiveLeds[currentIndex]==0)
+			if(ledIndex==0)
 			{
 				break;
 			}
-			ledSegSetLedWithGlobal(seg,st->glitterActiveLeds[currentIndex],ps->r_max,ps->g_max,ps->b_max,ps->globalSetting);
+			//Generate maxColour for LED
+			RGB_t RGBMaxTmp;
+			if(ps->rainbowColour)
+			{
+				uint16_t colIndex=((ledIndex-1)/ledsPerCol)%PRIDE_COL_NOF_COLOURS;
+				RGBMaxTmp=animGetColourPride((prideCols_t)colIndex,255);
+			}
+			else
+			{
+				RGBMaxTmp.r=ps->r_max;
+				RGBMaxTmp.g=ps->g_max;
+				RGBMaxTmp.b=ps->b_max;
+			}
+			ledSegSetLedWithGlobal(seg,ledIndex,RGBMaxTmp.r,RGBMaxTmp.g,RGBMaxTmp.b,ps->globalSetting);
 		}
 			//Once currentLED is reached, set all the rest LEDs until a 0 is encountered or we have set LEDs up to ledsMaxPower
-			//Restart the ringbuffer accordingly, if needed
+			//Restart the ringbuffer accordingly, if needed (apparently it wasn't)
 			//=st->glitterActiveLeds[currentIndex];
 	}
 	else	//Some pulse mode

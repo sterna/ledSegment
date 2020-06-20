@@ -54,6 +54,7 @@ typedef enum
 }prideCols_t;
 
 RGB_t animGetColour(simpleCols_t col, uint8_t normalize);
+RGB_t animGetColourPride(prideCols_t col, uint8_t normalize);
 RGB_t animNormalizeColours(const RGB_t* cols, uint8_t normalVal);
 void animLoadLedSegFadeColour(simpleCols_t col,ledSegmentFadeSetting_t* st, uint8_t minScale, uint8_t maxScale);
 void animLoadLedSegPulseColour(simpleCols_t col,ledSegmentPulseSetting_t* st, uint8_t maxScale);
