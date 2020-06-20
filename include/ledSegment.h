@@ -171,6 +171,8 @@ bool ledSegSetFadeMode(uint8_t seg, ledSegmentMode_t mode);
 bool ledSegSetPulseMode(uint8_t seg, ledSegmentMode_t mode);
 bool ledSegSetLed(uint8_t seg, uint16_t led, uint8_t r, uint8_t g, uint8_t b);
 bool ledSegSetLedWithGlobal(uint8_t seg, uint16_t led, uint8_t r, uint8_t g, uint8_t b,uint8_t global);
+bool ledSegSetRange(uint8_t seg, uint16_t start, uint16_t stop,uint8_t r,uint8_t g,uint8_t b);
+bool ledSegSetRangeWithGlobal(uint8_t seg, uint16_t start, uint16_t stop,uint8_t r,uint8_t g,uint8_t b,uint8_t global);
 
 bool ledSegGetState(uint8_t seg, ledSegment_t* state);
 bool ledSegGetSyncGroupDone(uint8_t syncGrp);

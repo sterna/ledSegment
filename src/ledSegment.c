@@ -93,7 +93,7 @@ static bool isGlitterMode(ledSegmentMode_t mode);
 static bool checkSyncReadyFade(uint8_t syncGrp, uint8_t seg);
 static bool checkFadeNotWaitingForSyncAll(uint8_t syncGrp);
 static void resetSyncDoneGroup(uint8_t syncGrp);
-
+static bool ledIsWithinSeg(uint8_t seg, uint16_t led);
 
 
 /*
@@ -482,35 +482,75 @@ bool ledSegSetPulseMode(uint8_t seg, ledSegmentMode_t mode)
  */
 bool ledSegSetLed(uint8_t seg, uint16_t led, uint8_t r, uint8_t g, uint8_t b)
 {
-	if(!ledSegExistsNotAll(seg))
+	if(!ledIsWithinSeg(seg,led))
 	{
 		return false;
 	}
-	if(led==0 || led>(segments[seg].stop-segments[seg].start+1))
-	{
-		return false;
-	}
+//	if(!ledSegExistsNotAll(seg))
+//	{
+//		return false;
+//	}
+//	if(led==0 || led>(segments[seg].stop-segments[seg].start+1))
+//	{
+//		return false;
+//	}
 	apa102SetPixel(segments[seg].strip,segments[seg].start+led-1,r,g,b,true);
 	return true;
 }
 
 /*
- * Sets a single LED within a segment to a colour
- * The LED is counted from the first LED in the segment (if LED=1, the start will be set)
+ * Sets a single LED within a segment to a colour, including the global setting
+ * The LED is counted from the first LED in the segment (if LED=1, the first LED will be set)
  * If the LED is out of bounds for the strip, the function will return false
  * Will be overriden by any fade or pulse setting
  */
 bool ledSegSetLedWithGlobal(uint8_t seg, uint16_t led, uint8_t r, uint8_t g, uint8_t b,uint8_t global)
 {
-	if(!ledSegExists(seg))
+	if(!ledIsWithinSeg(seg,led))
 	{
 		return false;
 	}
-	if(led==0 || led>(segments[seg].stop-segments[seg].start+1))
-	{
-		return false;
-	}
+//	if(!ledSegExistsNotAll(seg))
+//	{
+//		return false;
+//	}
+//	if(led==0 || led>(segments[seg].stop-segments[seg].start+1))
+//	{
+//		return false;
+//	}
 	apa102SetPixelWithGlobal(segments[seg].strip,segments[seg].start+led-1,r,g,b,global,true);
+	return true;
+}
+
+/*
+ * Sets a range of LEDs within a segment to the same colour
+ * Start and stop are counted from the first LED in the segment (if LED=1, the first LED will be set)
+ * If the LED is out of bounds for the strip, the function will return false
+ * Will be overriden by any fade or pulse setting
+ */
+bool ledSegSetRange(uint8_t seg, uint16_t start, uint16_t stop,uint8_t r,uint8_t g,uint8_t b)
+{
+	if(start>stop || !ledIsWithinSeg(seg,start) || !ledIsWithinSeg(seg,stop))
+	{
+		return false;
+	}
+	apa102FillRange(segments[seg].strip,segments[seg].start+start-1,segments[seg].start+stop-1,r,g,b,0);
+	return true;
+}
+
+/*
+ * Sets a range of LEDs within a segment to the same colour, including the global setting
+ * Start and stop are counted from the first LED in the segment (if LED=1, the first LED will be set)
+ * If the LED is out of bounds for the strip, the function will return false
+ * Will be overriden by any fade or pulse setting
+ */
+bool ledSegSetRangeWithGlobal(uint8_t seg, uint16_t start, uint16_t stop,uint8_t r,uint8_t g,uint8_t b,uint8_t global)
+{
+	if(start>stop || !ledIsWithinSeg(seg,start) || !ledIsWithinSeg(seg,stop))
+	{
+		return false;
+	}
+	apa102FillRange(segments[seg].strip,segments[seg].start+start-1,segments[seg].start+stop-1,r,g,b,global);
 	return true;
 }
 
@@ -1690,3 +1730,18 @@ static bool isGlitterMode(ledSegmentMode_t mode)
 	}
 }
 
+/*
+ * Returns true if the LED exists within the segment and if the segment exists (Not valid for LEDSEG_ALL)
+ */
+static bool ledIsWithinSeg(uint8_t seg, uint16_t led)
+{
+	if(!ledSegExistsNotAll(seg))
+	{
+		return false;
+	}
+	if(led==0 || led>(segments[seg].stop-segments[seg].start+1))
+	{
+		return false;
+	}
+	return true;
+}
