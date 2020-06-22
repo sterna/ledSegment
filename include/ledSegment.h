@@ -158,10 +158,11 @@ typedef struct
 	uint16_t start;
 	uint16_t stop;
 	bool invertPulse;	//Indicates if a segment direction is inverted, so that the pulse shall be inverted (Todo: Create a proper segmentInverted, but it's going to be muuuch more work)
+	bool excludeFromAll;
 	ledSegmentState_t state;
 }ledSegment_t;
 
-uint8_t ledSegInitSegment(uint8_t strip, uint16_t start, uint16_t stop, bool invertPulse, ledSegmentPulseSetting_t* pulse, ledSegmentFadeSetting_t* fade);
+uint8_t ledSegInitSegment(uint8_t strip, uint16_t start, uint16_t stop, bool invertPulse, bool excludeFromAll, ledSegmentPulseSetting_t* pulse, ledSegmentFadeSetting_t* fade);
 bool ledSegExists(uint8_t seg);
 bool ledSegExistsNotAll(uint8_t seg);
 bool ledSegSetPulse(uint8_t seg, ledSegmentPulseSetting_t* ps);

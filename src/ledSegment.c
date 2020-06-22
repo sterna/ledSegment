@@ -94,6 +94,7 @@ static bool checkSyncReadyFade(uint8_t syncGrp, uint8_t seg);
 static bool checkFadeNotWaitingForSyncAll(uint8_t syncGrp);
 static void resetSyncDoneGroup(uint8_t syncGrp);
 static bool ledIsWithinSeg(uint8_t seg, uint16_t led);
+static bool isExcludedFromAll(uint8_t seg);
 
 
 /*
@@ -101,7 +102,7 @@ static bool ledIsWithinSeg(uint8_t seg, uint16_t led);
  * Will return a value larger than LEDSEG_MAX_SEGMENTS if there is no more room for segments or any other error
  * Note that it's possible to register a segment over another segment. There are no checks for this
  */
-uint8_t ledSegInitSegment(uint8_t strip, uint16_t start, uint16_t stop, bool invertPulse, ledSegmentPulseSetting_t* pulse, ledSegmentFadeSetting_t* fade)
+uint8_t ledSegInitSegment(uint8_t strip, uint16_t start, uint16_t stop, bool invertPulse, bool excludeFromAll, ledSegmentPulseSetting_t* pulse, ledSegmentFadeSetting_t* fade)
 {
 	if(currentNofSegments>=LEDSEG_MAX_SEGMENTS || start>stop)
 	{
@@ -118,6 +119,7 @@ uint8_t ledSegInitSegment(uint8_t strip, uint16_t start, uint16_t stop, bool inv
 	sg->start=start;
 	sg->stop=stop;
 	sg->invertPulse=invertPulse;
+	sg->excludeFromAll=excludeFromAll;
 
 	currentNofSegments++;
 	if(!ledSegSetFade(currentNofSegments-1,fade))
@@ -187,7 +189,10 @@ bool ledSegSetFade(uint8_t seg, ledSegmentFadeSetting_t* fs)
 	{
 		for(uint8_t i=0;i<currentNofSegments;i++)
 		{
-			ledSegSetFade(i,fs);
+			if(!isExcludedFromAll(i))
+			{
+				ledSegSetFade(i,fs);
+			}
 		}
 		return true;
 	}
@@ -307,7 +312,10 @@ bool ledSegSetPulse(uint8_t seg, ledSegmentPulseSetting_t* ps)
 	{
 		for(uint8_t i=0;i<currentNofSegments;i++)
 		{
-			ledSegSetPulse(i,ps);
+			if(!isExcludedFromAll(i))
+			{
+				ledSegSetPulse(i,ps);
+			}
 		}
 		return true;
 	}
@@ -388,7 +396,10 @@ bool ledSegClearFade(uint8_t seg)
 	{
 		for(uint8_t i=0;i<currentNofSegments;i++)
 		{
-			ledSegClearFade(i);
+			if(!isExcludedFromAll(i))
+			{
+				ledSegClearFade(i);
+			}
 		}
 		return true;
 	}
@@ -417,7 +428,10 @@ bool ledSegClearPulse(uint8_t seg)
 	{
 		for(uint8_t i=0;i<currentNofSegments;i++)
 		{
-			ledSegClearPulse(i);
+			if(!isExcludedFromAll(i))
+			{
+				ledSegClearPulse(i);
+			}
 		}
 		return true;
 	}
@@ -444,7 +458,10 @@ bool ledSegSetFadeMode(uint8_t seg, ledSegmentMode_t mode)
 	{
 		for(uint8_t i=0;i<currentNofSegments;i++)
 		{
-			ledSegSetFadeMode(i,mode);
+			if(!isExcludedFromAll(i))
+			{
+				ledSegSetFadeMode(i,mode);
+			}
 		}
 		return true;
 	}
@@ -466,7 +483,10 @@ bool ledSegSetPulseMode(uint8_t seg, ledSegmentMode_t mode)
 	{
 		for(uint8_t i=0;i<currentNofSegments;i++)
 		{
-			ledSegSetPulseMode(i,mode);
+			if(!isExcludedFromAll(i))
+			{
+				ledSegSetPulseMode(i,mode);
+			}
 		}
 		return true;
 	}
@@ -567,7 +587,10 @@ bool ledSegSetPulseActiveState(uint8_t seg, bool state)
 	{
 		for(uint8_t i=0;i<currentNofSegments;i++)
 		{
-			ledSegSetPulseActiveState(i,state);
+			if(!isExcludedFromAll(i))
+			{
+				ledSegSetPulseActiveState(i,state);
+			}
 		}
 		return true;
 	}
@@ -588,7 +611,7 @@ bool ledSegGetPulseActiveState(uint8_t seg)
 	{
 		for(uint8_t i=0;i<currentNofSegments;i++)
 		{
-			if(!ledSegGetPulseActiveState(i))
+			if(!ledSegGetPulseActiveState(i) && !isExcludedFromAll(i))
 			{
 				return false;
 			}
@@ -611,7 +634,10 @@ bool ledSegSetFadeActiveState(uint8_t seg, bool state)
 	{
 		for(uint8_t i=0;i<currentNofSegments;i++)
 		{
-			ledSegSetFadeActiveState(i,state);
+			if(!isExcludedFromAll(i))
+			{
+				ledSegSetFadeActiveState(i,state);
+			}
 		}
 		return true;
 	}
@@ -632,7 +658,7 @@ bool ledSegGetFadeActiveState(uint8_t seg)
 	{
 		for(uint8_t i=0;i<currentNofSegments;i++)
 		{
-			if(!ledSegGetFadeActiveState(i))
+			if(!ledSegGetFadeActiveState(i) && !isExcludedFromAll(i))
 			{
 				return false;
 			}
@@ -655,7 +681,7 @@ bool ledSegGetFadeDone(uint8_t seg)
 	{
 		for(uint8_t i=0;i<currentNofSegments;i++)
 		{
-			if(!ledSegGetFadeDone(i))
+			if(!ledSegGetFadeDone(i) && !isExcludedFromAll(i))
 			{
 				return false;
 			}
@@ -712,7 +738,7 @@ bool ledSegGetPulseDone(uint8_t seg)
 	{
 		for(uint8_t i=0;i<currentNofSegments;i++)
 		{
-			if(!ledSegGetPulseDone(i))
+			if(!ledSegGetPulseDone(i) && !isExcludedFromAll(i))
 			{
 				return false;
 			}
@@ -737,7 +763,10 @@ bool ledSegSetPulseSpeed(uint8_t seg, uint16_t time, uint16_t ppi)
 	{
 		for(uint8_t i=0;i<currentNofSegments;i++)
 		{
-			ledSegSetPulseSpeed(i,time,ppi);
+			if(!isExcludedFromAll(i))
+			{
+				ledSegSetPulseSpeed(i,time,ppi);
+			}
 		}
 		return true;
 	}
@@ -765,7 +794,10 @@ bool ledSegRestart(uint8_t seg, bool restartFade, bool restartPulse)
 	{
 		for(uint8_t i=0;i<currentNofSegments;i++)
 		{
-			ledSegRestart(i,restartFade,restartPulse);
+			if(!isExcludedFromAll(i))
+			{
+				ledSegRestart(i,restartFade,restartPulse);
+			}
 		}
 		return true;
 	}
@@ -817,7 +849,10 @@ bool ledSegSetGlobal(uint8_t seg, uint8_t fadeGlobal, uint8_t pulseGlobal)
 	{
 		for(uint8_t i=0;i<currentNofSegments;i++)
 		{
-			ledSegSetGlobal(i,fadeGlobal,pulseGlobal);
+			if(!isExcludedFromAll(i))
+			{
+				ledSegSetGlobal(i,fadeGlobal,pulseGlobal);
+			}
 		}
 		return true;
 	}
@@ -842,7 +877,10 @@ void ledSegSetModeChange(ledSegmentFadeSetting_t* fs, uint8_t seg, bool switchAt
 	{
 		for(uint8_t i=0;i<currentNofSegments;i++)
 		{
-			ledSegSetModeChange(fs,i,switchAtMax);
+			if(!isExcludedFromAll(i))
+			{
+				ledSegSetModeChange(fs,i,switchAtMax);
+			}
 		}
 		return;
 	}
@@ -1744,4 +1782,17 @@ static bool ledIsWithinSeg(uint8_t seg, uint16_t led)
 		return false;
 	}
 	return true;
+}
+
+/*
+ * Returns true if a segment is configured to be excluded from a call with LEDSEG_ALL
+ * LEDSEG_ALL and a non-existing segment are considered to be excluded
+ */
+static bool isExcludedFromAll(uint8_t seg)
+{
+	if(!ledSegExistsNotAll(seg))
+	{
+		return true;
+	}
+	return segments[seg].excludeFromAll;
 }
