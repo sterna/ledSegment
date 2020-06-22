@@ -502,20 +502,7 @@ bool ledSegSetPulseMode(uint8_t seg, ledSegmentMode_t mode)
  */
 bool ledSegSetLed(uint8_t seg, uint16_t led, uint8_t r, uint8_t g, uint8_t b)
 {
-	if(!ledIsWithinSeg(seg,led))
-	{
-		return false;
-	}
-//	if(!ledSegExistsNotAll(seg))
-//	{
-//		return false;
-//	}
-//	if(led==0 || led>(segments[seg].stop-segments[seg].start+1))
-//	{
-//		return false;
-//	}
-	apa102SetPixel(segments[seg].strip,segments[seg].start+led-1,r,g,b,true);
-	return true;
+	return ledSegSetLedWithGlobal(seg,led,r,g,b,0);
 }
 
 /*
@@ -530,15 +517,16 @@ bool ledSegSetLedWithGlobal(uint8_t seg, uint16_t led, uint8_t r, uint8_t g, uin
 	{
 		return false;
 	}
-//	if(!ledSegExistsNotAll(seg))
-//	{
-//		return false;
-//	}
-//	if(led==0 || led>(segments[seg].stop-segments[seg].start+1))
-//	{
-//		return false;
-//	}
-	apa102SetPixelWithGlobal(segments[seg].strip,segments[seg].start+led-1,r,g,b,global,true);
+	uint16_t tmp=0;
+	if(segments[seg].invertPulse)
+	{
+		tmp=segments[seg].stop-led+1;
+	}
+	else
+	{
+		tmp=segments[seg].start+led-1;
+	}
+	apa102SetPixelWithGlobal(segments[seg].strip,tmp,r,g,b,global,true);
 	return true;
 }
 
@@ -550,12 +538,7 @@ bool ledSegSetLedWithGlobal(uint8_t seg, uint16_t led, uint8_t r, uint8_t g, uin
  */
 bool ledSegSetRange(uint8_t seg, uint16_t start, uint16_t stop,uint8_t r,uint8_t g,uint8_t b)
 {
-	if(start>stop || !ledIsWithinSeg(seg,start) || !ledIsWithinSeg(seg,stop))
-	{
-		return false;
-	}
-	apa102FillRange(segments[seg].strip,segments[seg].start+start-1,segments[seg].start+stop-1,r,g,b,0);
-	return true;
+	return ledSegSetRangeWithGlobal(seg,start,stop,r,g,b,0);
 }
 
 /*
@@ -1103,6 +1086,7 @@ static void pulseCalcAndSet(uint8_t seg)
 	uint8_t tmpR=0;
 	uint8_t tmpG=0;
 	uint8_t tmpB=0;
+	volatile uint8_t tmpSeg=seg;
 	if(!ledSegExists(seg))
 	{
 		return;
@@ -1229,6 +1213,8 @@ static void pulseCalcAndSet(uint8_t seg)
 		//This will only be false in a mode
 		if(currentIndex<glitterTotal)
 		{
+			//Todo: Check general buffer indexing to see if we miss/use the same LED multiple times, etc
+
 			//Go through the ring buffer in reverse, setting all fade LEDs to the proper colour
 			for(uint16_t i=0;i<ps->pixelsPerIteration;i++)
 			{
@@ -1266,16 +1252,17 @@ static void pulseCalcAndSet(uint8_t seg)
 					else
 					{
 						//Reset fade colour to 0, to start a new fade cycle
-						st->glitterR=st->r;
-						st->glitterG=st->g;
-						st->glitterB=st->b;
+						st->glitterR=0;//st->r;
+						st->glitterG=0;//st->g;
+						st->glitterB=0;//st->b;
 					}
 				}
 				//Update colour
-				//Todo: consider if we want to introduce direction in some way
-				st->glitterR=utilIncWithDir(st->glitterR,st->pulseDir,RGBMaxTmp.r/ps->pixelTime,st->r,RGBMaxTmp.r);
-				st->glitterG=utilIncWithDir(st->glitterG,st->pulseDir,RGBMaxTmp.g/ps->pixelTime,st->g,RGBMaxTmp.g);
-				st->glitterB=utilIncWithDir(st->glitterB,st->pulseDir,RGBMaxTmp.b/ps->pixelTime,st->b,RGBMaxTmp.b);
+				//Todo: Make sure we can fade to and from st->rgb (might require quite a bit of code and possibly syncing to get right...
+
+				st->glitterR=utilIncWithDir(st->glitterR,st->pulseDir,RGBMaxTmp.r/ps->pixelTime,0,RGBMaxTmp.r);
+				st->glitterG=utilIncWithDir(st->glitterG,st->pulseDir,RGBMaxTmp.g/ps->pixelTime,0,RGBMaxTmp.g);
+				st->glitterB=utilIncWithDir(st->glitterB,st->pulseDir,RGBMaxTmp.b/ps->pixelTime,0,RGBMaxTmp.b);
 				ledSegSetLedWithGlobal(seg,ledIndex,st->glitterR,st->glitterG,st->glitterB,ps->globalSetting);
 			}
 		}
