@@ -208,27 +208,6 @@ bool ledSegSetFade(uint8_t seg, ledSegmentFadeSetting_t* fs)
 	//Setup fade parameters
 	uint16_t periodMultiplier=1;
 	bool makeItSlower=false;
-
-	/*
-	 * r_max=200
-	 * r_min=100
-	 * fadeTime=700
-	 * perMul=1:
-	 * 	700/(20*1) = 35
-	 * 	rRate=100/35=2.85 ≈ 2
-	 * 	rMax=35*2=70 -> way too low
-	 * perMul=2
-	 * 	700/(20*2) = 17.5 ≈ 17
-	 * 	rRate=100/17=5.8≈5
-	 * 	rMax=5*17=85
-	 * perMul=3
-	 * 	700/(20*3)=11.6 ≈ 11
-	 * 	rRate=100/11=9.09
-	 * 	rMax=
-	 *
-	 *
-	 *
-	 */
 	//The total number update periods we have to achieve the fade time Todo: consider adding a limit if a fade is very small (such as less than 10 steps)
 	uint32_t master_steps=0;
 	const uint8_t largestError=50;
@@ -594,7 +573,7 @@ bool ledSegGetPulseActiveState(uint8_t seg)
 	{
 		for(uint8_t i=0;i<currentNofSegments;i++)
 		{
-			if(!ledSegGetPulseActiveState(i) && !isExcludedFromAll(i))
+			if(!isExcludedFromAll(i) && !ledSegGetPulseActiveState(i))
 			{
 				return false;
 			}
@@ -641,7 +620,7 @@ bool ledSegGetFadeActiveState(uint8_t seg)
 	{
 		for(uint8_t i=0;i<currentNofSegments;i++)
 		{
-			if(!ledSegGetFadeActiveState(i) && !isExcludedFromAll(i))
+			if(!isExcludedFromAll(i) && !ledSegGetFadeActiveState(i))
 			{
 				return false;
 			}
@@ -664,7 +643,7 @@ bool ledSegGetFadeDone(uint8_t seg)
 	{
 		for(uint8_t i=0;i<currentNofSegments;i++)
 		{
-			if(!ledSegGetFadeDone(i) && !isExcludedFromAll(i))
+			if(!isExcludedFromAll(i) && !ledSegGetFadeDone(i))
 			{
 				return false;
 			}
@@ -672,6 +651,30 @@ bool ledSegGetFadeDone(uint8_t seg)
 		return true;
 	}
 	return (segments[seg].state.fadeState==LEDSEG_FADE_DONE);
+}
+
+/*
+ * Returns true if the set fade animation switch is done
+ * If LEDSEG_ALL is given, it will only report
+ */
+bool ledSegGetFadeSwitchDone(uint8_t seg)
+{
+	if(!ledSegExists(seg))
+	{
+		return false;
+	}
+	if(seg==LEDSEG_ALL)
+	{
+		for(uint8_t i=0;i<currentNofSegments;i++)
+		{
+			if(!isExcludedFromAll(i) && !ledSegGetFadeSwitchDone(i))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+	return (!segments[seg].state.switchMode);
 }
 
 /*
@@ -721,7 +724,7 @@ bool ledSegGetPulseDone(uint8_t seg)
 	{
 		for(uint8_t i=0;i<currentNofSegments;i++)
 		{
-			if(!ledSegGetPulseDone(i) && !isExcludedFromAll(i))
+			if(!isExcludedFromAll(i) && !ledSegGetPulseDone(i))
 			{
 				return false;
 			}
@@ -1506,42 +1509,7 @@ static void fadeCalcColour(uint8_t seg)
 		{
 			allReached=true;
 		}
-		/*
-		bool compColAtMin=false;
-		bool compColAtMax=false;
-		if(compareColor==COL_BLUE)
-		{
-			if((blueReversed && st->b<=conf->b_max) || (!blueReversed && st->b>=conf->b_max))
-			{
-				compColAtMax=true;
-			}
-			else if((blueReversed && st->b>=conf->b_min) || (!blueReversed && st->b<=conf->b_min))
-			{
-				compColAtMin=true;
-			}
-		}
-		else if (compareColor==COL_GREEN)
-		{
-			if((greenReversed && st->g<=conf->g_max) || (!greenReversed && st->g>=conf->g_max))
-			{
-				compColAtMax=true;
-			}
-			else if((greenReversed && st->g>=conf->g_min) || (!greenReversed && st->g<=conf->g_min))
-			{
-				compColAtMin=true;
-			}
-		}
-		else if(conf->r_max != conf->r_min)	//red
-		{
-			if((redReversed && st->r<=conf->r_max) || (!redReversed && st->r>=conf->r_max))
-			{
-				compColAtMax=true;
-			}
-			else if((redReversed && st->r>=conf->r_min) || (!redReversed && st->r<=conf->r_min))
-			{
-				compColAtMin=true;
-			}
-		}*/
+
 		if(allReached)
 		{
 

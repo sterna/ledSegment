@@ -183,6 +183,7 @@ bool ledSegSetPulseActiveState(uint8_t seg, bool state);
 bool ledSegGetFadeActiveState(uint8_t seg);
 bool ledSegSetFadeActiveState(uint8_t seg, bool state);
 bool ledSegGetFadeDone(uint8_t seg);
+bool ledSegGetFadeSwitchDone(uint8_t seg);
 bool ledSegGetPulseDone(uint8_t seg);
 bool ledSegClearFade(uint8_t seg);
 bool ledSegClearPulse(uint8_t seg);

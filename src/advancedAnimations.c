@@ -67,7 +67,7 @@ RGB_t animGetColour(simpleCols_t col, uint8_t normalize)
 	{
 		temp=simpleColours[utilRandRange(SIMPLE_COL_NOF_COLOURS-1)];
 	}
-	else
+	else if(col < SIMPLE_COL_NOF_COLOURS)
 	{
 		temp=simpleColours[col];
 	}
@@ -132,10 +132,6 @@ void animLoadLedSegPulseColour(simpleCols_t col,ledSegmentPulseSetting_t* st, ui
 	st->r_max = tmpCol.r;
 	st->g_max = tmpCol.g;
 	st->b_max = tmpCol.b;
-
-	/*st->r_max = (uint8_t)utilScale(tmpCol.r,255,maxScale);
-	st->g_max = (uint8_t)utilScale(tmpCol.g,255,maxScale);
-	st->b_max = (uint8_t)utilScale(tmpCol.b,255,maxScale);*/
 }
 
 /*
@@ -152,99 +148,39 @@ void animLoadLedSegFadeBetweenColours(simpleCols_t colFrom, simpleCols_t colTo, 
 	st->g_max = to.g;
 	st->b_min = from.b;
 	st->b_max = to.b;
-
-	/*st->r_min = (uint8_t)utilScale(from.r,255,fromScale);
-	st->r_max = (uint8_t)utilScale(to.r,255,toScale);
-	st->g_min = (uint8_t)utilScale(from.g,255,fromScale);
-	st->g_max = (uint8_t)utilScale(to.g,255,toScale);
-	st->b_min = (uint8_t)utilScale(from.b,255,fromScale);
-	st->b_max = (uint8_t)utilScale(to.b,255,toScale);*/
-	/*
-	ledSegmentFadeSetting_t settingFrom;
-	ledSegmentFadeSetting_t settingTo;
-	//Fetch colours into two settings (it's probably easier to do it like this)
-	animLoadLedSegFadeColour(colFrom,&settingFrom,0,fromScale);
-	animLoadLedSegFadeColour(colTo,&settingTo,0,toScale);
-	st->r_min = settingFrom.r_max;
-	st->r_max = settingTo.r_max;
-	st->g_min = settingFrom.g_max;
-	st->g_max = settingTo.g_max;
-	st->b_min = settingFrom.b_max;
-	st->b_max = settingTo.b_max;*/
 }
 
 /*
  * Sets up a mode where you switch from one mode to another (soft fade between the two fade colours)
  * fs is the fade setting to fade TO (this just loads the correct colour)
  * switchAtMax indicates of the modeChange-animation shall end on min or max
- * Note that this will actually perform the fadeSet, so a new fadeset of this fadesetting with this segment should not be performed
+ * Note that this will actually perform the fadeSet, so a new fadeSet of this fadesetting with this segment should not be performed
+ * If updateSetting is given, the fadeSetting is changed/colour is loaded)
  */
-void animSetModeChange(simpleCols_t col, ledSegmentFadeSetting_t* fs, uint8_t seg, bool switchAtMax, uint8_t minScale, uint8_t maxScale)
+void animSetModeChange(simpleCols_t col, ledSegmentFadeSetting_t* fs, uint8_t seg, bool switchAtMax, uint8_t minScale, uint8_t maxScale, bool updateSetting)
 {
 	ledSegmentFadeSetting_t fsTmp;
-	memcpy(&fsTmp,fs,sizeof(ledSegmentFadeSetting_t));
-	//Load the setting as normal (will give us the max setting, as fade by default starts from max)
-	if(col!=SIMPLE_COL_NO_CHANGE)
+	if(updateSetting)
 	{
-		animLoadLedSegFadeColour(col,&fsTmp,minScale,maxScale);
+		//Load the setting as normal (will give us the max setting, as fade by default starts from max)
+		if(col!=SIMPLE_COL_NO_CHANGE)
+		{
+			animLoadLedSegFadeColour(col,fs,minScale,maxScale);
+		}
+		//Send the change we want to have to the ledSeg, as no-one else should access and change the state
+		ledSegSetModeChange(fs,seg,switchAtMax);
 	}
-	//Send the change we want to have to the ledSeg, as no-one else should access and change the state
-	ledSegSetModeChange(&fsTmp,seg,switchAtMax);
-
-
-	//To save for the next setting:
-	/*
-	 * rgb_min
-	 * cycles
-	 * mode
-	 * note that dir does NOT have to be saved, as switching between modes will always fade TO max, so the start-dir will always change to down.
-	 *
-	 * Usecases:
-	 * ModeLoop
-	 * - Efter byte är vi på max. Då vill vi börja om från min (dir = 1)
-	 * - Efter byte är vi på max. Då vill vi gå mot min (dir=-1)
-	 * - Efter byte är vi på min. Då vill vi gå mot max (dir=1)
-	 * - Efter byte är vi på min. Då vill vi börja om från max (dir=-1)
-	 * ModeBounce
-	 * - Efter byte är vi på max. Då ska vi gå neråt (alltid)
-	 * - Efter byte är vi på min. Då ska vi gå uppåt (alltid)
-	 *
-	 * Dir vid bytet indikerar om vi är på min eller max. Dir=1 indikerar max, dir=-1 indikerar min
-	 */
-/*
-	//Get the colour of the current state to know what to move from
-	ledSegment_t currentSeg;
-	ledSegGetState(segment,&currentSeg);
-
-	//At this point, we know the entire setting that we're going to go TO.
-	//Now we save the settings needed:
-	st->savedCycles = st->cycles;
-	st->switchMode=true;
-	st->savedDir = st->startDir;
-	//We will fade from min to max, with dir up. We therefore save the min value and assign that to the current state.
-	if(switchAtMax)
+	else
 	{
-		st->savedR =st->r_min;
-		st->savedG =st->g_min;
-		st->savedB =st->b_min;
-		st->r_min = currentSeg.state.r;
-		st->g_min = currentSeg.state.g;
-		st->b_min = currentSeg.state.b;
-		st->startDir=1;
+		memcpy(&fsTmp,fs,sizeof(ledSegmentFadeSetting_t));
+		//Load the setting as normal (will give us the max setting, as fade by default starts from max)
+		if(col!=SIMPLE_COL_NO_CHANGE)
+		{
+			animLoadLedSegFadeColour(col,&fsTmp,minScale,maxScale);
+		}
+		//Send the change we want to have to the ledSeg, as no-one else should access and change the state
+		ledSegSetModeChange(&fsTmp,seg,switchAtMax);
 	}
-	else	//we will fade from max to min, with dir down.
-	{
-		st->savedR =st->r_max;
-		st->savedG =st->g_max;
-		st->savedB =st->b_max;
-		st->r_max = currentSeg.state.r;
-		st->g_max = currentSeg.state.g;
-		st->b_max = currentSeg.state.b;
-		st->startDir=-1;
-	}
-	//Cycles shall always be 1, so we know when we are done
-	st->cycles=1;
-	*/
 }
 
 static bool prideWheelActive=false;
@@ -300,7 +236,7 @@ static prideCols_t animLoadNextRainbowWheel(ledSegmentFadeSetting_t* fs, uint8_t
 	fs->mode=LEDSEG_MODE_LOOP_END;
 	//Since both colours are already loaded, animSetModeChange shall not load any new colour.
 	//We need to switch at max, since there's only one fade cycle going from min to max (and then a new switch is loaded)
-	animSetModeChange(SIMPLE_COL_NO_CHANGE,fs,seg,false,0,255);
+	animSetModeChange(SIMPLE_COL_NO_CHANGE,fs,seg,false,0,255,false);
 	return colIndex;
 }
 
