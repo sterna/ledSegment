@@ -15,6 +15,11 @@
 //The call period for the animation task in ms
 #define ANIM_TASK_PERIOD	55
 
+//The maximum number of allowed animation points in one sequence (each point consumes 60B of SRAM)
+#define ANIM_SEQ_MAX_POINTS	10
+//The maximum possible of saved animation sequences (each animation sequence uses ANIM_SEQ_MAX_POINTS*60B+12B SRAM)
+#define ANIM_SEQ_MAX_SEQS	5
+
 /*
  * Handles the types of the different advanced animation modes
  */

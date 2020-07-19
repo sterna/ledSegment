@@ -359,6 +359,7 @@ bool ledSegSetPulse(uint8_t seg, ledSegmentPulseSetting_t* ps)
 		//pu->globalSetting = APA_MAX_GLOBAL_SETTING+1;
 	}
 	st->pulseDone=false;
+	st->pulseActive=true;
 	return true;
 }
 
@@ -655,7 +656,7 @@ bool ledSegGetFadeDone(uint8_t seg)
 
 /*
  * Returns true if the set fade animation switch is done
- * If LEDSEG_ALL is given, it will only report
+ * If LEDSEG_ALL is given, it will only report true if all segments are done
  */
 bool ledSegGetFadeSwitchDone(uint8_t seg)
 {
