@@ -69,7 +69,9 @@ typedef struct
 	uint16_t pixelTime;				//The number of multiples of LEDSEG_UPDATE_PERIOD_TIME between moving the pulse forward. Glitter: The number of ms for a complete fade.
 	uint32_t cycles;				//If cycles=0, it will run forever. Cycles only has effect in MODE_LOOP_END
 	uint8_t globalSetting;			//The global setting to be used
-	bool rainbowColour;				//Indicates that the pulse shall have the automatically generated rainbow colour. This overrides the normal colour selection
+
+	uint8_t colourSeqNum;			//Number of colours in a colour sequence. If colourSeqNum=0, colour sequencing is not used. If used, it overrides the normal colour setting
+	RGB_t* colourSeqPtr;			//Pointer to the colour sequence list.
 }ledSegmentPulseSetting_t;
 
 /*

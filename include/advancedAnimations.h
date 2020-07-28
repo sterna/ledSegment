@@ -33,7 +33,7 @@ typedef enum
 
 typedef enum
 {
-	SIMPLE_COL_RED,
+	SIMPLE_COL_RED=0,
 	SIMPLE_COL_GREEN,
 	SIMPLE_COL_BLUE,
 	SIMPLE_COL_PURPLE,
@@ -49,14 +49,22 @@ typedef enum
 
 typedef enum
 {
-	PRIDE_COL_RED,
+	PRIDE_COL_RED=0,
 	PRIDE_COL_ORANGE,
 	PRIDE_COL_YELLOW,
 	PRIDE_COL_GREEN,
 	PRIDE_COL_INDIGO,
 	PRIDE_COL_PURPLE,
-	PRIDE_COL_NOF_COLOURS,
+	PRIDE_COL_NOF_COLOURS
 }prideCols_t;
+
+typedef enum
+{
+	PAN_COL_PINK=0,
+	PAN_COL_YELLOW,
+	PAN_COL_BLUE,
+	PAN_COL_NOF_COLOURS
+}panCols_t;
 
 /*
  * Defines a single point of animation setting
@@ -74,8 +82,14 @@ typedef struct
 	bool fadeToNext;				//Indicates if we should fade into the next point or not Todo: Consider renaming to fadeToThis or something
 }animSeqPoint_t;
 
+
+extern const RGB_t coloursSimple[SIMPLE_COL_NOF_COLOURS];
+extern const RGB_t coloursPride[PRIDE_COL_NOF_COLOURS];
+extern const RGB_t coloursPan[PAN_COL_NOF_COLOURS];
+
 RGB_t animGetColour(simpleCols_t col, uint8_t normalize);
 RGB_t animGetColourPride(prideCols_t col, uint8_t normalize);
+RGB_t animGetColourFromSequence(RGB_t* colourList, uint8_t num, uint8_t normalize);
 RGB_t animNormalizeColours(const RGB_t* cols, uint8_t normalVal);
 void animLoadLedSegFadeColour(simpleCols_t col,ledSegmentFadeSetting_t* st, uint8_t minScale, uint8_t maxScale);
 void animLoadLedSegPulseColour(simpleCols_t col,ledSegmentPulseSetting_t* st, uint8_t maxScale);

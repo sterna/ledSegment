@@ -61,7 +61,7 @@ static animSequence_t animSeqs[ANIM_SEQ_MAX_SEQS];
 static uint8_t animSeqsNofSeqs=0;
 
 
-const RGB_t simpleColours[SIMPLE_COL_NOF_COLOURS]=
+const RGB_t coloursSimple[SIMPLE_COL_NOF_COLOURS]=
 {
 	{255,0,0},			//Red
 	{0,255,0},			//Green
@@ -73,7 +73,7 @@ const RGB_t simpleColours[SIMPLE_COL_NOF_COLOURS]=
 };
 
 
-const RGB_t prideColours[PRIDE_COL_NOF_COLOURS]=
+const RGB_t coloursPride[PRIDE_COL_NOF_COLOURS]=
 {
 	{0xE7,0,0},			//Red
 	{0xFF,0x60,0},		//Orange
@@ -81,6 +81,13 @@ const RGB_t prideColours[PRIDE_COL_NOF_COLOURS]=
 	{0,0xFF,0x10},		//Green
 	{0,0x20,0xFF},		//Indigo
 	{0x76,0,0x79},		//Purple
+};
+
+const RGB_t coloursPan[PAN_COL_NOF_COLOURS]=
+{
+	{0xFF,0x1B,0x8D},		//Pink
+	{0xFF,0xDA,0x00},		//Yellow
+	{0x1B,0xB3,0xFF},		//Blue
 };
 
 /*
@@ -92,11 +99,11 @@ RGB_t animGetColour(simpleCols_t col, uint8_t normalize)
 	RGB_t temp={0,0,0};
 	if(col == SIMPLE_COL_RANDOM)
 	{
-		temp=simpleColours[utilRandRange(SIMPLE_COL_NOF_COLOURS-1)];
+		temp=coloursSimple[utilRandRange(SIMPLE_COL_NOF_COLOURS-1)];
 	}
 	else if(col < SIMPLE_COL_NOF_COLOURS)
 	{
-		temp=simpleColours[col];
+		temp=coloursSimple[col];
 	}
 	if(normalize>0)
 	{
@@ -112,12 +119,33 @@ RGB_t animGetColour(simpleCols_t col, uint8_t normalize)
 RGB_t animGetColourPride(prideCols_t col, uint8_t normalize)
 {
 	RGB_t temp={0,0,0};
-	temp=prideColours[col];
+	temp=coloursPride[col];
 	if(normalize>0)
 	{
 		return animNormalizeColours(&temp,normalize);
 	}
 	return temp;
+}
+
+/*
+ * Extracts and normalizes (if given) a colour from a given colour list.
+ * Will NOT check if num is out of sequence.
+ */
+RGB_t animGetColourFromSequence(RGB_t* colourList, uint8_t num, uint8_t normalize)
+{
+	RGB_t tmp={0,0,0};
+	if(colourList==NULL)
+	{
+		return tmp;
+	}
+	tmp.r=colourList[num].r;
+	tmp.g=colourList[num].g;
+	tmp.b=colourList[num].b;
+	if(normalize)
+	{
+		animNormalizeColours(&tmp,normalize);
+	}
+	return tmp;
 }
 
 /*
@@ -697,58 +725,4 @@ void animTask()
 			}
 		}
 	}	//End of go through animation sequences
-
-	/*
-	 * Setup:
-	 * 	Load first colour in sequence as fromTo with fade_end
-	 * 	Remember to setup sync groups
-	 * 	Set rainbow wheel as true
-	 *
-	 * Loop:
-	 * Check if in rainbow wheel mode
-	 * 		Check if fade is done
-	 * 			Load next colour in sequence as fromTo with fade_end
-	 * 			Set next colour
-	 * 			increment segment with wraparound
-	 */
-
-
-	/*
-	 *  *	case SMODE_STAD_I_LJUS:
-			{
-				//Special mode for Stad i ljus performance
-				stadILjusState=1;
-				if(!modeChangeStage)
-				{
-					loadModeChange(DISCO_COL_YELLOW,&fade,segmentTail);
-					pulseIsActive=false;
-					modeChangeStage=1;
-				}
-				else if(modeChangeStage==2 && ledSegGetFadeDone(segmentTail))
-				{
-					//Todo: set fade parameters
-					modeChangeStage=0;
-					fade.cycles=0;
-					fade.startDir=-1;
-					loadLedSegFadeColour(DISCO_COL_YELLOW,&fade);
-					pulseIsActive=false;
-				}
-				break;
-			}
-			}
-			if(modeChangeStage<2)
-			{
-				ledSegSetFade(segmentTail,&fade);
-				ledSegSetPulse(segmentTail,&pulse);
-				ledSegSetPulseActiveState(segmentTail,pulseIsActive);
-				ledSegSetFade(segmentArmLeft,&fade);
-				ledSegSetPulse(segmentArmLeft,&pulse);
-				ledSegSetPulseActiveState(segmentArmLeft,pulseIsActive);
-				if(modeChangeStage==1)
-				{
-					modeChangeStage=2;
-				}
-			}
-	 *
-	 */
 }

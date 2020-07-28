@@ -1008,16 +1008,16 @@ static uint8_t pulseCalcColourPerLed(ledSegmentState_t* st,uint16_t led, colour_
 	ps=&(st->confPulse);
 	RGB_t RGBMaxTmp;
 
-	if(ps->rainbowColour)
+	if(ps->colourSeqNum)
 	{
-		uint16_t ledsPerColour=(ps->ledsFadeBefore+ps->ledsMaxPower+ps->ledsFadeAfter)/PRIDE_COL_NOF_COLOURS;
+		uint16_t ledsPerColour=(ps->ledsFadeBefore+ps->ledsMaxPower+ps->ledsFadeAfter)/ps->colourSeqNum;
 		//If the pulse is shorter than PRIDE_COL_NOF_COLOURS, this will not work well
 		if(ledsPerColour<1)
 		{
 			ledsPerColour=1;
 		}
-		uint16_t colIndex=((led-1)/ledsPerColour)%PRIDE_COL_NOF_COLOURS;
-		RGBMaxTmp=animGetColourPride((prideCols_t)colIndex,255);
+		uint16_t colIndex=((led-1)/ledsPerColour)%ps->colourSeqNum;
+		RGBMaxTmp=animGetColourFromSequence(ps->colourSeqPtr,colIndex,255);//animGetColourPride((prideCols_t)colIndex,255);
 	}
 	else
 	{
@@ -1228,9 +1228,9 @@ static void pulseCalcAndSet(uint8_t seg)
 		}
 		//Calculate how many leds per colout for rainbowMode
 		uint16_t ledsPerCol=0;
-		if(ps->rainbowColour)
+		if(ps->colourSeqNum)
 		{
-			ledsPerCol=(stop-start)/PRIDE_COL_NOF_COLOURS;
+			ledsPerCol=(stop-start)/ps->colourSeqNum;
 		}
 
 		//Handles the LED fading (the newest LEDs) for all modes. If no fading is going on (because we're done), currentIndex==glitterTotal.
@@ -1252,10 +1252,10 @@ static void pulseCalcAndSet(uint8_t seg)
 				}
 				uint16_t ledIndex=st->glitterActiveLeds[currentIndex];
 				RGB_t RGBMaxTmp;
-				if(ps->rainbowColour)
+				if(ps->colourSeqNum)
 				{
-					uint16_t colIndex=((ledIndex-1)/ledsPerCol)%PRIDE_COL_NOF_COLOURS;
-					RGBMaxTmp=animGetColourPride((prideCols_t)colIndex,255);
+					uint16_t colIndex=((ledIndex-1)/ledsPerCol)%ps->colourSeqNum;
+					RGBMaxTmp=animGetColourFromSequence(ps->colourSeqPtr,colIndex,255);
 				}
 				else
 				{
@@ -1326,10 +1326,10 @@ static void pulseCalcAndSet(uint8_t seg)
 			}
 			//Generate maxColour for LED
 			RGB_t RGBMaxTmp;
-			if(ps->rainbowColour)
+			if(ps->colourSeqNum)
 			{
-				uint16_t colIndex=((ledIndex-1)/ledsPerCol)%PRIDE_COL_NOF_COLOURS;
-				RGBMaxTmp=animGetColourPride((prideCols_t)colIndex,255);
+				uint16_t colIndex=((ledIndex-1)/ledsPerCol)%ps->colourSeqNum;
+				RGBMaxTmp=animGetColourFromSequence(ps->colourSeqPtr,colIndex,255);
 			}
 			else
 			{
