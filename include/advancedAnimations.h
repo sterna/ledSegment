@@ -58,6 +58,22 @@ typedef enum
 	PRIDE_COL_NOF_COLOURS,
 }prideCols_t;
 
+/*
+ * Defines a single point of animation setting
+ * the mode and cycles of the fade and pulse controls how long this point runs for
+ */
+typedef struct
+{
+	ledSegmentFadeSetting_t fade;	//The fade setting used for this specific point
+	bool fadeUsed;
+	ledSegmentPulseSetting_t pulse;	//The fade setting used for this specific point
+	bool pulseUsed;
+	uint32_t waitAfter;				//The time the final state (after both fade/pulse is done) shall persist (in ms)
+	bool waitForTrigger;			//Set the point to wait for a trigger to initiate switching to next. Once trigger is received, waitAfter time will start
+	bool switchAtMax;
+	bool fadeToNext;				//Indicates if we should fade into the next point or not Todo: Consider renaming to fadeToThis or something
+}animSeqPoint_t;
+
 RGB_t animGetColour(simpleCols_t col, uint8_t normalize);
 RGB_t animGetColourPride(prideCols_t col, uint8_t normalize);
 RGB_t animNormalizeColours(const RGB_t* cols, uint8_t normalVal);
@@ -69,6 +85,18 @@ void animSetModeChange(simpleCols_t col, ledSegmentFadeSetting_t* fs, uint8_t se
 void animSetPrideWheel(ledSegmentFadeSetting_t* fs, uint8_t seg);
 void animSetPrideWheelState(bool active);
 bool animPrideWheelGetDone();
+prideCols_t animLoadNextRainbowWheel(ledSegmentFadeSetting_t* fs, uint8_t seg, prideCols_t colIndex);
+
+uint8_t animSeqInit(uint8_t seg, bool isSyncGroup, uint32_t cycles, animSeqPoint_t* points, uint8_t nofPoints);
+void animSeqFillPoint(animSeqPoint_t* point, ledSegmentFadeSetting_t* fs, ledSegmentPulseSetting_t* ps, uint32_t waitAfter, bool waitForTrigger, bool fadeToNext, bool switchAtMax);
+bool animSeqExists(uint8_t seqNum);
+bool animSeqAppendPoint(uint8_t seqNum, animSeqPoint_t* point);
+bool animSeqRemovePoint(uint8_t seqNum, uint8_t n);
+void animSeqSetRestart(uint8_t seqNum);
+bool animSeqTrigReady(uint8_t seqNum);
+void animSeqTrigTransition(uint8_t seqNum);
+void animSeqSetActive(uint8_t seqNum, bool active);
+bool animSeqIsActive(uint8_t seqNum);
 
 void animTask();
 

@@ -33,8 +33,8 @@ typedef enum
 	LEDSEG_MODE_BOUNCE,					//Pulse will travel to the end of the segment, and then back to beginning, and then back to the end and loop like that
 	LEDSEG_MODE_TIMED_PULSE,			//Todo: Not implemented yet
 	LEDSEG_MODE_GLITTER_LOOP,			//Loop: At max, it puts all those points out and restarts from 0.
-	LEDSEG_MODE_GLITTER_LOOP_END,		//Loop_end: At max, it stops, persisting all lit points.
-	LEDSEG_MODE_GLITTER_LOOP_PERSIST,	//Loop_persist (new mode): At max, it adds new LEDs every cycle, replacing the oldest ones.
+	LEDSEG_MODE_GLITTER_LOOP_END,		//Loop_end: At max, it stops, persisting all lit points. Glitter loop end does not support cycles (technically, it only supports 1)
+	LEDSEG_MODE_GLITTER_LOOP_PERSIST,	//Loop_persist: At max, it adds new LEDs every cycle, replacing the oldest ones.
 	LEDSEG_MODE_GLITTER_BOUNCE,			//Bounce: Like normal bounce, but works with adding/removing LEDs as the direction.
 	LEDSEG_MODE_NOF_MODES
 }ledSegmentMode_t;
@@ -65,12 +65,11 @@ typedef struct
 	uint16_t startLed;				//The LED to start with. If larger than the total LEDs in the segment, it will start from the top
 
 	int8_t startDir;				//The direction we shall start in (+1 or -1)
-	uint16_t pixelsPerIteration;	//The number of pixels the pulse shall move per iteration. ALso the number of pixels that shall be lit each iteration
+	uint16_t pixelsPerIteration;	//The number of pixels the pulse shall move per iteration. Glitter: The number of piels to fade for each iteration
 	uint16_t pixelTime;				//The number of multiples of LEDSEG_UPDATE_PERIOD_TIME between moving the pulse forward. Glitter: The number of ms for a complete fade.
 	uint32_t cycles;				//If cycles=0, it will run forever. Cycles only has effect in MODE_LOOP_END
 	uint8_t globalSetting;			//The global setting to be used
-	bool rainbowColour;
-
+	bool rainbowColour;				//Indicates that the pulse shall have the automatically generated rainbow colour. This overrides the normal colour selection
 }ledSegmentPulseSetting_t;
 
 /*
@@ -140,6 +139,7 @@ typedef struct
 
 	//Glitter specific state
 	//State of the glitter colour
+	bool pulseUpdatedCycle;				//Indicates that we have just generated LEDs to trigger a cycle change for glitter modes
 	uint8_t glitterR;
 	uint8_t glitterG;
 	uint8_t glitterB;

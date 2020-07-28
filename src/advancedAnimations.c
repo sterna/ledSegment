@@ -12,41 +12,29 @@
  * - Pre-defined settings and patterns
  * - Rainbow colour
  * - Disco mode
- *
+ * - Animation sequencing (with and without trig)
  * (Basically a lot of the stuff that was done within the main loop of the software)
- */
-
-
-/*
- * Animation sequencing
- * Setup:
- * 1. Store a series of settings (fade and pulse) in a list. Include the length of list and mode (loop list/end list). These settings are stored per segment or sync group
- * 2. Load the first settings for all
  *
- * Loop
- * 1. Check which mode is used
- * 2. Check if all fades in sync group are properly done.
- * 3. Load the next setting in the sequence to all segments using it.
- * 4. Increment setting counter (with wrap around)
+ * Animation sequence usage:
+ * - A sequence consists of multiple animation points. An animation point is defined with a pulse and a fade setting (same as usual).
+ * - A point also has some other settings:
+ * 	- waitAfter - sets the time to wait until loading the next point
+ * 	- waitForTrig - waits for an external trig before loading the next point
+ * 	- fadeToNext - if the fade shall fade from the current colour to the next colour. Also supports the setting of switching at max/min for this
+ * The program will run a the sequence and load a new point (new settings) whenever each point is done (when both fade and pulse are done).
+ * The sequence has a cycle counter itself, and can be set to run for any number of cycles. As usual, if 0 is set, it will run forever.
+ * Animation sequence supports running using LESEG_ALL.
+ *
  */
 
 #include "advancedAnimations.h"
 
-/*
- * Defines a single point of animation setting
- * the mode and cycles of the fade and pulse controls how long this point runs for
- */
-typedef struct
+typedef enum
 {
-	ledSegmentFadeSetting_t fade;	//The fade setting used for this specific point
-	ledSegmentPulseSetting_t pulse;	//The fade setting used for this specific point
-	uint32_t waitAfter;				//The time the final state (after both fade/pulse is done) shall persist (in ms)
-	uint8_t fadeMinScale;
-	uint8_t fadeMaxScale;
-	uint8_t pulseMaxScale;
-	bool switchAtMax;
-	bool fadeToNext;				//Indicates if we should fade into the next point or not
-}animSeqPoint_t;
+	ANIM_TRIG_NOT_READY=0,	//Trigger is not ready (fade/pulse are not done yet)
+	ANIM_TRIG_READY=1,		//Trigger is ready to be activated
+	ANIM_TRIG_ACTIVATED=2	//Trigger is activated
+}animTriggerState_t;
 
 /*
  * Defines a full animation program
@@ -54,18 +42,19 @@ typedef struct
 typedef struct
 {
 	animSeqPoint_t points[ANIM_SEQ_MAX_POINTS];	//A list of the animation points used for this animation sequence
-	uint8_t currentPoint;	//The current point of animation we're one
+	uint8_t currentPoint;		//The current point of animation we're one
 	uint8_t nofPoints;
-	uint32_t cycles;		//The number of cycles the animation shall run for. If cycles = 0 from the start, it will loop indefinitely
-	uint8_t seg;			//Segment to run this animation sequence on. If isSyncGroup is true, this is instead the sync group
-	bool isSyncGroup;		//Indicates if sync group is used
-	bool isActive;			//Indicates if this sequence is currently running
-	uint32_t waitReleaseTime;	//The time at which the next point shall be loaded
-	bool isFadingToNextPoint;	//Indicates if we're currently fading to the next point
+	uint32_t cyclesSetting;		//The number of cycles the animation shall run for. If cycles = 0 from the start, it will loop indefinitely
+	uint32_t cyclesLeft;		//The number of cycles the animation has left
+	uint8_t seg;				//Segment to run this animation sequence on. If isSyncGroup is true, this is instead the sync group
+	bool isSyncGroup;			//Indicates if sync group is used
+	bool isActive;				//Indicates if this sequence is currently running (this means that the current pulse and fade will run until done)
+	uint32_t waitReleaseTime;	//The time at which the next point shall be loaded (set internally)
+	animTriggerState_t waitReleaseTrigger;	//Is true if we're waiting for a manual trigger (set internally)
+	bool isFadingToNextPoint;	//Indicates if we're currently fading to the next point (set internally)
 }animSequence_t;
 
-static prideCols_t animLoadNextRainbowWheel(ledSegmentFadeSetting_t* fs, uint8_t seg, prideCols_t colIndex);
-static void animSeqLoadCurrentPoint(animSequence_t* seq);
+static void animSeqLoadCurrentPoint(animSequence_t* seq, bool firstPoint);
 
 
 static animSequence_t animSeqs[ANIM_SEQ_MAX_SEQS];
@@ -89,7 +78,7 @@ const RGB_t prideColours[PRIDE_COL_NOF_COLOURS]=
 	{0xE7,0,0},			//Red
 	{0xFF,0x60,0},		//Orange
 	{0xFF,0xEF,0},		//Yellow
-	{0,0xFF,0x20},		//Green
+	{0,0xFF,0x10},		//Green
 	{0,0x20,0xFF},		//Indigo
 	{0x76,0,0x79},		//Purple
 };
@@ -257,7 +246,7 @@ void animSetPrideWheel(ledSegmentFadeSetting_t* fs, uint8_t seg)
 /*
  * Loads the next colour into the fade setting for pride wheel
  */
-static prideCols_t animLoadNextRainbowWheel(ledSegmentFadeSetting_t* fs, uint8_t seg, prideCols_t colIndex)
+prideCols_t animLoadNextRainbowWheel(ledSegmentFadeSetting_t* fs, uint8_t seg, prideCols_t colIndex)
 {
 	const RGB_t tmpCol1=animGetColourPride(colIndex,255);//animNormalizeColours(&prideColours[colIndex],255);
 	colIndex=utilIncLoopSimple(colIndex,(PRIDE_COL_NOF_COLOURS-1));
@@ -294,7 +283,6 @@ void animSetPrideWheelState(bool active)
 	prideWheelActive=active;
 }
 
-
 /*
  * Inits an animation sequence. Will return a number to use to refer to the animation sequence
  * Todo: Support for sync group is not done yet, don't use it
@@ -309,7 +297,8 @@ uint8_t animSeqInit(uint8_t seg, bool isSyncGroup, uint32_t cycles, animSeqPoint
 	//Load all settings into state and reset everything accordingly
 	animSequence_t* seq=&animSeqs[animSeqsNofSeqs];
 	memset(seq,0,sizeof(animSequence_t));
-	seq->cycles=cycles;
+	seq->cyclesSetting=cycles;
+	seq->cyclesLeft=cycles;
 	seq->currentPoint=0;
 	seq->isFadingToNextPoint=false;
 	seq->isSyncGroup=isSyncGroup;
@@ -319,44 +308,206 @@ uint8_t animSeqInit(uint8_t seg, bool isSyncGroup, uint32_t cycles, animSeqPoint
 	memcpy(seq->points,points,nofPoints*sizeof(animSeqPoint_t));
 
 	//Load first point (if it's a fade, it will be handled by the task later)
-	animSeqLoadCurrentPoint(seq);
-	seq->isActive=true;
+	animSeqLoadCurrentPoint(seq,true);
 	animSeqsNofSeqs++;
 	return animSeqsNofSeqs-1;
 }
 
 /*
+ * Fills a point with given data
+ */
+void animSeqFillPoint(animSeqPoint_t* point, ledSegmentFadeSetting_t* fs, ledSegmentPulseSetting_t* ps, uint32_t waitAfter, bool waitForTrigger, bool fadeToNext, bool switchAtMax)
+{
+	point->fadeUsed=false;
+	point->pulseUsed=false;
+	if(fs!=NULL)
+	{
+		memcpy(&(point->fade),fs,sizeof(ledSegmentFadeSetting_t));
+		point->fadeUsed=true;
+	}
+	if(ps!=NULL)
+	{
+		memcpy(&(point->pulse),ps,sizeof(ledSegmentPulseSetting_t));
+		point->pulseUsed=true;
+	}
+	point->waitAfter=waitAfter;
+	point->fadeToNext=fadeToNext;
+	point->switchAtMax = switchAtMax;
+	point->waitForTrigger=waitForTrigger;
+}
+
+/*
  * Append a single point into an animation sequence
  */
-void animSeqAppendPoint()
+bool animSeqAppendPoint(uint8_t seqNum, animSeqPoint_t* point)
 {
-
+	if(!animSeqExists(seqNum))
+	{
+		return false;
+	}
+	animSequence_t* seq=&animSeqs[seqNum];
+	if(seq->nofPoints>ANIM_SEQ_MAX_POINTS)
+	{
+		return false;
+	}
+	seq->nofPoints++;
+	memcpy(&(seq->points[seq->nofPoints-1]),point,sizeof(animSeqPoint_t));
+	return true;
 }
 
 /*
  * Removes the n last points in an animation sequence
+ * If all points are removed, the segment will not update
  */
-void animSeqRemovePoint()
+bool animSeqRemovePoint(uint8_t seqNum, uint8_t n)
 {
+	if(!animSeqExists(seqNum))
+	{
+		return false;
+	}
+	uint8_t currentPoints=animSeqs[seqNum].nofPoints;
+	if(n>currentPoints)
+	{
+		n=currentPoints;
+	}
+	animSeqs[seqNum].nofPoints=currentPoints-n;
+	return true;
+}
 
+/*
+ * Returns true if an animation sequence exists
+ */
+bool animSeqExists(uint8_t seqNum)
+{
+	if(seqNum<animSeqsNofSeqs)
+	{
+		return true;
+	}
+	return false;
+}
+
+/*
+ * Returns true if the animation sequence is active
+ * If LEDSEG_ALL (255) is given, it will return true if any animationSequence is active
+ */
+bool animSeqIsActive(uint8_t seqNum)
+{
+	if(seqNum==LEDSEG_ALL)
+	{
+		for(uint8_t i=0; i<animSeqsNofSeqs;i++)
+		{
+			if(animSeqIsActive(i))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+	if(!animSeqExists(seqNum))
+	{
+		return false;
+	}
+	return animSeqs[seqNum].isActive;
+}
+
+/*
+ * Enables/disables an animation sequence
+ */
+void animSeqSetActive(uint8_t seqNum, bool active)
+{
+	if(!animSeqExists(seqNum))
+	{
+		return;
+	}
+	animSeqs[seqNum].isActive=active;
+}
+
+/*
+ * Restarts an animation sequence from the first point
+ */
+void animSeqSetRestart(uint8_t seqNum)
+{
+	if(!animSeqExists(seqNum))
+	{
+		return;
+	}
+	animSeqs[seqNum].cyclesLeft=animSeqs[seqNum].cyclesSetting;
+	animSeqs[seqNum].currentPoint=0;
+	animSeqs[seqNum].isActive=true;
+	animSeqLoadCurrentPoint(&animSeqs[seqNum],true);
+}
+
+/*
+ * Trigger an animation transition manually, if ready.
+ * If LEDSEG_ALL is given, it will try to trigger all animSeqs
+ * Note: A trigger cannot be ready unless enabled for the point
+ */
+void animSeqTrigTransition(uint8_t seqNum)
+{
+	if(seqNum==LEDSEG_ALL)
+	{
+		for(uint8_t i=0;i<animSeqsNofSeqs;i++)
+		{
+			animSeqTrigTransition(i);
+		}
+	}
+	if(!animSeqExists(seqNum))
+	{
+		return;
+	}
+	if(animSeqs[seqNum].waitReleaseTrigger==ANIM_TRIG_READY)
+	{
+		animSeqs[seqNum].waitReleaseTrigger=ANIM_TRIG_ACTIVATED;
+	}
+}
+
+/*
+ * Returns true if an animation sequence is ready to be triggered.
+ * If LEDSEG_ALL is given, true will only be returned if all seqs are ready
+ */
+bool animSeqTrigReady(uint8_t seqNum)
+{
+	if(seqNum==LEDSEG_ALL)
+	{
+		for(uint8_t i=0;i<animSeqsNofSeqs;i++)
+		{
+			if(!animSeqTrigReady(i))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+	if(!animSeqExists(seqNum))
+	{
+		return false;
+	}
+	if(animSeqs[seqNum].waitReleaseTrigger==ANIM_TRIG_READY)
+	{
+		return true;
+	}
+	else
+	{
+		return false;
+	}
 }
 
 /*
  * Loads the current point into from an animation sequence
  * Does not change any point state or anything
  */
-static void animSeqLoadCurrentPoint(animSequence_t* seq)
+static void animSeqLoadCurrentPoint(animSequence_t* seq, bool firstPoint)
 {
 	//We have updated the current point and checked everything. Load the new segment settings
 	animSeqPoint_t* point=&(seq->points[seq->currentPoint]);
 	const uint8_t seg=seq->seg;
 	bool fadeActive=false;
 	bool pulseActive=false;
-	if(&point->fade)
+	if(point->fadeUsed)
 	{
 		fadeActive=true;
 	}
-	if(&point->pulse)
+	if(point->pulseUsed)
 	{
 		pulseActive=true;
 	}
@@ -365,7 +516,7 @@ static void animSeqLoadCurrentPoint(animSequence_t* seq)
 	{
 		if(point->fadeToNext)
 		{
-			animSetModeChange(SIMPLE_COL_NO_CHANGE,&point->fade,seg,point->switchAtMax,point->fadeMinScale,point->fadeMaxScale,false);
+			animSetModeChange(SIMPLE_COL_NO_CHANGE,&point->fade,seg,point->switchAtMax,0,0,false);
 			seq->isFadingToNextPoint=true;
 		}
 		else
@@ -375,7 +526,8 @@ static void animSeqLoadCurrentPoint(animSequence_t* seq)
 	}
 	else
 	{
-		ledSegSetFadeActiveState(seg,false);
+//		ledSegSetFadeActiveState(seg,false);
+		ledSegSetFadeActiveState(seg,true);	//Set fade active, but don't restart or update it
 	}
 	/*
 	 * 4 cases:
@@ -384,7 +536,7 @@ static void animSeqLoadCurrentPoint(animSequence_t* seq)
 	 * pActive && !fading - update pulse immediately
 	 * pActive && fading - do nothing. Keep existing pulse state until fade is done. Once fade is done, load next pulse
 	 */
-	if(!seq->isFadingToNextPoint)
+	if(!seq->isFadingToNextPoint || firstPoint)
 	{
 		if(pulseActive)
 		{
@@ -395,6 +547,8 @@ static void animSeqLoadCurrentPoint(animSequence_t* seq)
 			ledSegSetPulseActiveState(seg,false);
 		}
 	}
+	//Always reset external trigger state when loading a new point
+	seq->waitReleaseTrigger=ANIM_TRIG_NOT_READY;
 }
 
 /*
@@ -433,10 +587,11 @@ void animTask()
 	}
 
 	//Go through and update all animations sequences
+	//Todo: Consider dividing this into multiple calls to spread out CPU load slightly
 	for(uint8_t i=0;i<animSeqsNofSeqs;i++)
 	{
 		animSequence_t* seq=&animSeqs[i];
-		if(seq->isActive)
+		if(seq->isActive && (seq->nofPoints>0))
 		{
 			const uint8_t seg=seq->seg;
 			const bool isSyncGrp=seq->isSyncGroup;
@@ -451,49 +606,79 @@ void animTask()
 			}
 			else
 			{
-				fadeDone=ledSegGetFadeDone(seg);
-				pulseDone=ledSegGetPulseDone(seg);
+				if(ledSegGetFadeDone(seg) || !seq->points[seq->currentPoint].fadeUsed)
+				{
+					fadeDone=true;
+				}
+				if(ledSegGetPulseDone(seg) || !seq->points[seq->currentPoint].pulseUsed)
+				{
+					pulseDone=true;
+				}
+//				fadeDone=ledSegGetFadeDone(seg);
+//				pulseDone=ledSegGetPulseDone(seg);
 			}
 			if(fadeDone && pulseDone)
 			{
 				//We now know that the point is done. Check if we need to keep waiting.
-				//Check if we have started waiting
-				if(!seq->waitReleaseTime)
-				{
-					seq->waitReleaseTime=seq->points[seq->currentPoint].waitAfter+systemTime;
-				}
-				if(seq->waitReleaseTime <= systemTime)
-				{
-					seq->waitReleaseTime=0;	//Ensure this is done only once (as soon as new settings are loaded, fade and pulse will stop being done)
 
-					//We have waited now and the current point is now finished.
-					//Update and check point counter
-					seq->currentPoint++;
-					if(seq->currentPoint>=seq->nofPoints)
+				//Check if we are using external trigger and if it's ready
+				bool trigReady=false;
+				//Set trigger to ready, if it's not
+				if(seq->points[seq->currentPoint].waitForTrigger)
+				{
+					if(seq->waitReleaseTrigger == ANIM_TRIG_NOT_READY)
 					{
-						//Check cycle counter if we shall continue looping
-						//Cycles==0 means infite loop
-						if(seq->cycles==0)
+						seq->waitReleaseTrigger = ANIM_TRIG_READY;
+					}
+					if(seq->waitReleaseTrigger==ANIM_TRIG_ACTIVATED)
+					{
+						trigReady=true;
+					}
+				}
+				else
+				{
+					trigReady=true;
+				}
+				if(trigReady)
+				{
+					//Check if we have started waiting
+					if(!seq->waitReleaseTime)
+					{
+						seq->waitReleaseTime=seq->points[seq->currentPoint].waitAfter+systemTime;
+					}
+					if(seq->waitReleaseTime <= systemTime)
+					{
+						seq->waitReleaseTime=0;	//Ensure this is done only once (as soon as new settings are loaded, fade and pulse will stop being done)
+
+						//We have waited now and the current point is now finished.
+						//Update and check point counter
+						seq->currentPoint++;
+						if(seq->currentPoint>=seq->nofPoints)
 						{
-							seq->currentPoint=0;
-						}
-						else
-						{
-							seq->cycles--;
-							if(seq->cycles)
+							//Check cycle counter if we shall continue looping
+							//Cycles==0 means infite loop
+							if(seq->cyclesLeft==0)
 							{
-								//We still have cycles left
 								seq->currentPoint=0;
 							}
 							else
 							{
-								seq->isActive=false;
+								seq->cyclesLeft--;
+								if(seq->cyclesLeft)
+								{
+									//We still have cycles left
+									seq->currentPoint=0;
+								}
+								else
+								{
+									seq->isActive=false;
+								}
 							}
 						}
-					}
-					if(seq->isActive)
-					{
-						animSeqLoadCurrentPoint(seq);
+						if(seq->isActive)
+						{
+							animSeqLoadCurrentPoint(seq,false);
+						}
 					}
 				}
 			}
@@ -508,6 +693,7 @@ void animTask()
 				{
 					ledSegSetPulseActiveState(seg,false);
 				}
+				seq->isFadingToNextPoint=false;
 			}
 		}
 	}	//End of go through animation sequences
