@@ -113,21 +113,6 @@ RGB_t animGetColour(simpleCols_t col, uint8_t normalize)
 }
 
 /*
- * Returns the a colour from the pride list
- * If normalize is given as larger than 0, the colour will be normalized to produce a total output of that value
- */
-RGB_t animGetColourPride(prideCols_t col, uint8_t normalize)
-{
-	RGB_t temp={0,0,0};
-	temp=coloursPride[col];
-	if(normalize>0)
-	{
-		return animNormalizeColours(&temp,normalize);
-	}
-	return temp;
-}
-
-/*
  * Extracts and normalizes (if given) a colour from a given colour list.
  * Will NOT check if num is out of sequence.
  */
@@ -238,78 +223,6 @@ void animSetModeChange(simpleCols_t col, ledSegmentFadeSetting_t* fs, uint8_t se
 	}
 }
 
-static bool prideWheelActive=false;
-static bool prideWheelDone=false;
-static ledSegmentFadeSetting_t prideWheelSetting;
-static uint8_t prideWheelSeg=0;
-static prideCols_t prideWheelIndex=0;
-static uint32_t prideCycles=0;
-
-/*
- * Sets up a rainbow wheel fade given the settings given. Only the following settings are valid:
- * - Global setting (normal min/max scale is not possible, since these are set colour ratios)
- * - Cycles (one cycle is one full cycle through the whole rainbow)
- * - FadeTime (the time it takes to from one colour to the next)
- * - syncGroup
- * All other settings are generated internally and overwritten.
- *
- * Procedure:
- *  1. Load a fade the goes from colour 0 to colour 1.
- *  2. Setup a mode change to this setting.
- *  3. When fade is done, we are AT colour 1. Then, setup the next fade as in step 1, but fade from colour 2 to 3.
- *
- */
-void animSetPrideWheel(ledSegmentFadeSetting_t* fs, uint8_t seg)
-{
-	//Copy setting and setup for rainbow wheel (
-	memcpy(&prideWheelSetting,fs,sizeof(ledSegmentFadeSetting_t));
-	prideCycles=PRIDE_COL_NOF_COLOURS*fs->cycles;
-	//Min/Max scale doesn't matter, as we only do one cycle
-	prideWheelIndex=animLoadNextRainbowWheel(&prideWheelSetting,seg,PRIDE_COL_RED);
-	prideWheelSeg=seg;
-	prideWheelActive=true;
-	prideWheelDone=false;
-}
-
-/*
- * Loads the next colour into the fade setting for pride wheel
- */
-prideCols_t animLoadNextRainbowWheel(ledSegmentFadeSetting_t* fs, uint8_t seg, prideCols_t colIndex)
-{
-	const RGB_t tmpCol1=animGetColourPride(colIndex,255);//animNormalizeColours(&prideColours[colIndex],255);
-	colIndex=utilIncLoopSimple(colIndex,(PRIDE_COL_NOF_COLOURS-1));
-	const RGB_t tmpCol2=animGetColourPride(colIndex,255);
-	colIndex=utilIncLoopSimple(colIndex,(PRIDE_COL_NOF_COLOURS-1));
-	fs->r_min=tmpCol1.r;
-	fs->g_min=tmpCol1.g;
-	fs->b_min=tmpCol1.b;
-	fs->r_max=tmpCol2.r;
-	fs->g_max=tmpCol2.g;
-	fs->b_max=tmpCol2.b;
-	fs->startDir=1;
-	fs->cycles=1;
-	fs->mode=LEDSEG_MODE_LOOP_END;
-	//Since both colours are already loaded, animSetModeChange shall not load any new colour.
-	//We need to switch at max, since there's only one fade cycle going from min to max (and then a new switch is loaded)
-	animSetModeChange(SIMPLE_COL_NO_CHANGE,fs,seg,false,0,255,false);
-	return colIndex;
-}
-
-/*
- * Returns true if pridewheel is done
- */
-bool animPrideWheelGetDone()
-{
-	return prideWheelDone;
-}
-
-/*
- * Turns the pride wheel on/off
- */
-void animSetPrideWheelState(bool active)
-{
-	prideWheelActive=active;
-}
 
 /*
  * Inits an animation sequence. Will return a number to use to refer to the animation sequence
@@ -343,6 +256,7 @@ uint8_t animSeqInit(uint8_t seg, bool isSyncGroup, uint32_t cycles, animSeqPoint
 
 /*
  * Fills a point with given data
+ * Note: Switch at max is only used i fadeToNext is used
  */
 void animSeqFillPoint(animSeqPoint_t* point, ledSegmentFadeSetting_t* fs, ledSegmentPulseSetting_t* ps, uint32_t waitAfter, bool waitForTrigger, bool fadeToNext, bool switchAtMax)
 {
@@ -452,6 +366,7 @@ void animSeqSetActive(uint8_t seqNum, bool active)
 
 /*
  * Restarts an animation sequence from the first point
+ * Will activate an animation sequence, if not active
  */
 void animSeqSetRestart(uint8_t seqNum)
 {
@@ -521,6 +436,54 @@ bool animSeqTrigReady(uint8_t seqNum)
 }
 
 /*
+ * Generates and allocates an animation sequence that performs a colour wheel with the given colour sequence
+ * Fadetime is the time to switch from one colour fully to the next.
+ * Syncgroup is used to be able to set this for multiple segments
+ */
+uint8_t animGenerateFadeSequence(uint8_t seg, uint8_t syncGroup, uint32_t cycles, uint8_t nofPoints, RGB_t* sequence, uint32_t fadeTime, uint32_t waitTime, uint8_t maxScaling)
+{
+	if(animSeqsNofSeqs>=ANIM_SEQ_MAX_SEQS || !ledSegExists(seg) || nofPoints>ANIM_SEQ_MAX_POINTS)
+	{
+		return ANIM_SEQ_MAX_SEQS+1;
+	}
+	animSeqPoint_t pts[nofPoints];
+	/*
+	 * Create a fade from the current colour into the first colour in the list (use fade into, however this is done for animation sequence)
+	 * Create a fade from col1 to col2. Switch directly to the next fade, which is from col2 to col3, then continue as this.
+	 * The last segment shall fade from col_n to col1, no fade switch.
+	 */
+	ledSegmentFadeSetting_t fd;
+	fd.fadeTime=fadeTime;
+	fd.mode=LEDSEG_MODE_LOOP_END;
+	fd.cycles=1;
+	fd.globalSetting=0;
+	fd.syncGroup=syncGroup;
+	fd.startDir=1;	//Always fade from min to max
+	for(uint8_t i=0;i<nofPoints;i++)
+	{
+		RGB_t RGBTmpFrom=animGetColourFromSequence(sequence,i,maxScaling);
+		//This was the last point. Next colour must be colour 0
+		RGB_t RGBTmpTo={0,0,0};
+		if(i==(nofPoints-1))
+		{
+			RGBTmpTo=animGetColourFromSequence(sequence,0,maxScaling);
+		}
+		else
+		{
+			RGBTmpTo=animGetColourFromSequence(sequence,i+1,maxScaling);
+		}
+		fd.r_min=RGBTmpFrom.r;
+		fd.r_max=RGBTmpTo.r;
+		fd.g_min=RGBTmpFrom.g;
+		fd.g_max=RGBTmpTo.g;
+		fd.b_min=RGBTmpFrom.b;
+		fd.b_max=RGBTmpTo.b;
+		animSeqFillPoint(&pts[i],&fd,NULL,waitTime,false,false,false);
+	}
+	return animSeqInit(seg,false,cycles,pts,nofPoints);
+}
+
+/*
  * Loads the current point into from an animation sequence
  * Does not change any point state or anything
  */
@@ -542,7 +505,8 @@ static void animSeqLoadCurrentPoint(animSequence_t* seq, bool firstPoint)
 	//If mode change fade is used, don't update pulse until we're
 	if(fadeActive)
 	{
-		if(point->fadeToNext)
+		//Note: This might fuck something up firstPoint
+		if(point->fadeToNext || firstPoint)
 		{
 			animSetModeChange(SIMPLE_COL_NO_CHANGE,&point->fade,seg,point->switchAtMax,0,0,false);
 			seq->isFadingToNextPoint=true;
@@ -591,28 +555,6 @@ void animTask()
 		return;
 	}
 	nextCallTime=systemTime+ANIM_TASK_PERIOD;
-
-	//Rainbow wheel generation
-	if(prideWheelActive)
-	{
-		if(ledSegGetFadeDone(prideWheelSeg))
-		{
-			prideWheelIndex=animLoadNextRainbowWheel(&prideWheelSetting,prideWheelSeg,prideWheelIndex);
-			if(prideCycles)
-			{
-				if(prideCycles<=2)
-				{
-					prideCycles=0;
-					prideWheelActive=false;
-					prideWheelDone=true;
-				}
-				else
-				{
-					prideCycles-=2;
-				}
-			}
-		}
-	}
 
 	//Go through and update all animations sequences
 	//Todo: Consider dividing this into multiple calls to spread out CPU load slightly

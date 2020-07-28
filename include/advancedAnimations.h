@@ -69,6 +69,7 @@ typedef enum
 /*
  * Defines a single point of animation setting
  * the mode and cycles of the fade and pulse controls how long this point runs for
+ * Todo: Add support to ignore the finishing of a fade or pulse for this point (to load a pulse or fade that will run indefinitely)
  */
 typedef struct
 {
@@ -111,6 +112,8 @@ bool animSeqTrigReady(uint8_t seqNum);
 void animSeqTrigTransition(uint8_t seqNum);
 void animSeqSetActive(uint8_t seqNum, bool active);
 bool animSeqIsActive(uint8_t seqNum);
+
+uint8_t animGenerateFadeSequence(uint8_t seg, uint8_t syncGroup, uint32_t cycles, uint8_t nofPoints, RGB_t* sequence, uint32_t fadeTime, uint32_t waitTime, uint8_t maxScaling);
 
 void animTask();
 
