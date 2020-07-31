@@ -226,6 +226,7 @@ void animSetModeChange(simpleCols_t col, ledSegmentFadeSetting_t* fs, uint8_t se
 
 /*
  * Inits an animation sequence. Will return a number to use to refer to the animation sequence
+ * If existingSequence is a valid and existing sequence, this sequence will be over-written
  * Todo: Support for sync group is not done yet, don't use it
  */
 uint8_t animSeqInit(uint8_t seg, bool isSyncGroup, uint32_t cycles, animSeqPoint_t* points, uint8_t nofPoints)
@@ -252,6 +253,29 @@ uint8_t animSeqInit(uint8_t seg, bool isSyncGroup, uint32_t cycles, animSeqPoint
 	animSeqLoadCurrentPoint(seq,true);
 	animSeqsNofSeqs++;
 	return animSeqsNofSeqs-1;
+}
+
+/*
+ * Takes an existing animation sequence and re-inits it as a new one
+ * Returns the number of the animation sequence given. If any other number is returned (specifically ANIM_SEQ_MAX_SEQS or larger), something went wrong
+ */
+uint8_t animSeqInitExisting(uint8_t existingSeq, uint8_t seg, bool isSyncGroup, uint32_t cycles, animSeqPoint_t* points, uint8_t nofPoints)
+{
+	if(!animSeqExists(existingSeq))
+	{
+		return ANIM_SEQ_MAX_SEQS+1;
+	}
+	//Set nofSeqs to the seq we want to to change, to fool the Init-function to change the correct sequence
+	const uint8_t savedNofSeqs=animSeqsNofSeqs;
+	animSeqsNofSeqs=existingSeq;
+	uint8_t returnSeq=animSeqInit(seg,isSyncGroup,cycles,points,nofPoints);
+	//Restore the saved number of seqs
+	animSeqsNofSeqs=savedNofSeqs;
+	if(returnSeq!=existingSeq)
+	{
+		return ANIM_SEQ_MAX_SEQS+1;
+	}
+	return returnSeq;
 }
 
 /*
@@ -314,6 +338,14 @@ bool animSeqRemovePoint(uint8_t seqNum, uint8_t n)
 	}
 	animSeqs[seqNum].nofPoints=currentPoints-n;
 	return true;
+}
+
+/*
+ * Removes all points from an animation sequence
+ */
+bool animSeqRemoveAllPoints(uint8_t seqNum)
+{
+	return animSeqRemovePoint(seqNum,animSeqs[seqNum].nofPoints);
 }
 
 /*
@@ -440,9 +472,9 @@ bool animSeqTrigReady(uint8_t seqNum)
  * Fadetime is the time to switch from one colour fully to the next.
  * Syncgroup is used to be able to set this for multiple segments
  */
-uint8_t animGenerateFadeSequence(uint8_t seg, uint8_t syncGroup, uint32_t cycles, uint8_t nofPoints, RGB_t* sequence, uint32_t fadeTime, uint32_t waitTime, uint8_t maxScaling)
+uint8_t animGenerateFadeSequence(uint8_t existingSeq, uint8_t seg, uint8_t syncGroup, uint32_t cycles, uint8_t nofPoints, RGB_t* sequence, uint32_t fadeTime, uint32_t waitTime, uint8_t maxScaling)
 {
-	if(animSeqsNofSeqs>=ANIM_SEQ_MAX_SEQS || !ledSegExists(seg) || nofPoints>ANIM_SEQ_MAX_POINTS)
+	if((animSeqsNofSeqs>=ANIM_SEQ_MAX_SEQS && !animSeqExists(existingSeq)) || !ledSegExists(seg) || nofPoints>ANIM_SEQ_MAX_POINTS)
 	{
 		return ANIM_SEQ_MAX_SEQS+1;
 	}
@@ -480,7 +512,14 @@ uint8_t animGenerateFadeSequence(uint8_t seg, uint8_t syncGroup, uint32_t cycles
 		fd.b_max=RGBTmpTo.b;
 		animSeqFillPoint(&pts[i],&fd,NULL,waitTime,false,false,false);
 	}
-	return animSeqInit(seg,false,cycles,pts,nofPoints);
+	if(animSeqExists(existingSeq))
+	{
+		return animSeqInitExisting(existingSeq,seg,false,cycles,pts,nofPoints);
+	}
+	else
+	{
+		return animSeqInit(seg,false,cycles,pts,nofPoints);
+	}
 }
 
 /*

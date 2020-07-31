@@ -808,17 +808,20 @@ bool ledSegRestart(uint8_t seg, bool restartFade, bool restartPulse)
 		}
 		st->fadeState=LEDSEG_FADE_NOT_DONE;
 		st->fadeCycle=st->confFade.cycles;
+		st->fadeActive=true;
 	}
 	if(restartPulse)
 	{
-		st->pulseDone=false;
 		st->pulseDir = st->confPulse.startDir;
 		st->currentLed = st->confPulse.startLed;
+		st->pulseCycle=st->confPulse.cycles;
 		if(isGlitterMode(st->confPulse.mode))
 		{
 			//Todo: Add handling for bounce
-			st->currentLed=0;
+			st->currentLed=st->confPulse.startLed;
 		}
+		st->pulseActive=true;
+		st->pulseDone=false;
 	}
 	return true;
 }
@@ -1010,7 +1013,12 @@ static uint8_t pulseCalcColourPerLed(ledSegmentState_t* st,uint16_t led, colour_
 
 	if(ps->colourSeqNum)
 	{
-		uint16_t ledsPerColour=(ps->ledsFadeBefore+ps->ledsMaxPower+ps->ledsFadeAfter)/ps->colourSeqNum;
+		uint8_t tmp=1;
+		if(ps->colourSeqLoops)
+		{
+			tmp=ps->colourSeqLoops;
+		}
+		uint16_t ledsPerColour=(ps->ledsFadeBefore+ps->ledsMaxPower+ps->ledsFadeAfter)/(tmp*ps->colourSeqNum);
 		//If the pulse is shorter than PRIDE_COL_NOF_COLOURS, this will not work well
 		if(ledsPerColour<1)
 		{
@@ -1107,20 +1115,80 @@ static void pulseCalcAndSet(uint8_t seg)
 	bool glitterJustGenerated=false;
 	//Move LED and update direction
 	//Check if it's time to move a pixel
+	/*
+	 * Todo: Make a proper cycle counter for modes that are not glitter modes
+	 * Vid ett cykelslut (currentLed overflows i kör-riktningen), räkna då ner cycle counter med ett steg
+	 * Om cycle counter blev 0, sätt den i läget outOfCycles (använd st->pulseUpdatedCycle). Det här läget fungerar overrides ps.mode och funkar likadant som LEDSEG_MODE_LOOP_END
+	 */
 	if(checkCycleCounterU16(&st->cyclesToPulseMove) && !st->pulseDone)
 	{
-		if(ps->mode == LEDSEG_MODE_BOUNCE)
+		if(ps->mode == LEDSEG_MODE_LOOP_END || st->pulseUpdatedCycle)
+		{
+			if(utilValueWillOverflow(st->currentLed,ps->pixelsPerIteration*st->pulseDir,start,stop))
+			{
+				if(checkCycleCounter(&st->pulseCycle))
+				{
+					st->pulseUpdatedCycle=true;
+				}
+			}
+			st->currentLed =st->currentLed+ps->pixelsPerIteration*st->pulseDir;
+
+			int32_t tmpLed= st->currentLed;
+			if(st->pulseDir==1 && (tmpLed>=(pulseLength+stop)))
+			{
+				if(st->pulseUpdatedCycle)
+				{
+					st->pulseDone = true;
+					st->pulseActive = false;
+					st->pulseUpdatedCycle=false;
+				}
+				else
+				{
+					st->currentLed = start;
+				}
+			}
+			else if(st->pulseDir==-1 && (tmpLed<=(int32_t)(start-pulseLength)))
+			{
+				if(st->pulseUpdatedCycle)
+				{
+					st->pulseDone = true;
+					st->pulseActive = false;
+					st->pulseUpdatedCycle=false;
+				}
+				else
+				{
+					st->currentLed = stop;
+				}
+			}
+		}
+		else if(ps->mode == LEDSEG_MODE_BOUNCE)
 		{
 			st->currentLed = utilBounceValue(st->currentLed,ps->pixelsPerIteration*st->pulseDir,start,stop,&tmpDir);
-			st->pulseDir=tmpDir;
+			if(st->pulseDir!=tmpDir)
+			{
+				if(checkCycleCounter(&st->pulseCycle))
+				{
+					st->pulseUpdatedCycle=true;
+				}
+				else
+				{
+					st->pulseDir=tmpDir;
+				}
+			}
 		}
 		else if(ps->mode == LEDSEG_MODE_LOOP)
 		{
-			st->currentLed = utilLoopValue(st->currentLed,ps->pixelsPerIteration*st->pulseDir,start,stop);
-		}
-		else if(ps->mode == LEDSEG_MODE_LOOP_END)
-		{
-			st->currentLed =st->currentLed+ps->pixelsPerIteration*st->pulseDir;
+			if(utilValueWillOverflow(st->currentLed,ps->pixelsPerIteration*st->pulseDir,start,stop))
+			{
+				if(checkCycleCounter(&st->pulseCycle))
+				{
+					st->pulseUpdatedCycle=true;
+				}
+			}
+			if(!st->pulseUpdatedCycle)
+			{
+				st->currentLed = utilLoopValue(st->currentLed,ps->pixelsPerIteration*st->pulseDir,start,stop);
+			}
 		}
 		else if(isGlitterMode(ps->mode))
 		{
@@ -1151,11 +1219,6 @@ static void pulseCalcAndSet(uint8_t seg)
 					memset(st->glitterActiveLeds,0,glitterTotal*sizeof(uint16_t));
 					st->currentLed=0;
 				}
-//				else if(ps->mode == LEDSEG_MODE_GLITTER_LOOP_END)
-//				{
-//					st->currentLed=glitterTotal;
-//					st->pulseDone=true;
-//				}
 			}
 			//This will handle LEDSEG_MODE_GLITTER_LOOP_END (and also other unforeseen things)
 			if(st->currentLed<glitterTotal)
@@ -1230,7 +1293,12 @@ static void pulseCalcAndSet(uint8_t seg)
 		uint16_t ledsPerCol=0;
 		if(ps->colourSeqNum)
 		{
-			ledsPerCol=(stop-start)/ps->colourSeqNum;
+			uint8_t tmp=1;
+			if(ps->colourSeqLoops)
+			{
+				tmp=ps->colourSeqLoops;
+			}
+			ledsPerCol=(stop-start)/(ps->colourSeqNum*tmp);
 		}
 
 		//Handles the LED fading (the newest LEDs) for all modes. If no fading is going on (because we're done), currentIndex==glitterTotal.
@@ -1342,56 +1410,60 @@ static void pulseCalcAndSet(uint8_t seg)
 	}
 	else	//Not glitter mode
 	{
-		//Set colour for all LEDs in pulse
-		for(uint16_t i=0;i<pulseLength;i++)
+		if(st->pulseActive)
 		{
-			//Generate where the LED shall be
-			int16_t tmpLedNum=0;
-			if(ps->mode == LEDSEG_MODE_BOUNCE)
+			//Set colour for all LEDs in pulse
+			for(uint16_t i=0;i<pulseLength;i++)
 			{
-				tmpLedNum=utilBounceValue(st->currentLed,i*st->pulseDir*-1,start,stop,NULL);
-			}
-			else if(ps->mode == LEDSEG_MODE_LOOP)
-			{
-				tmpLedNum=utilLoopValue(st->currentLed,i*st->pulseDir*-1,start,stop);
-			}
-			else if(ps->mode == LEDSEG_MODE_LOOP_END)
-			{
-				tmpLedNum = st->currentLed+i*st->pulseDir*-1;
-				if(i>=(pulseLength-1))
+				//Generate where the LED shall be
+				int16_t tmpLedNum=0;
+
+				if(ps->mode == LEDSEG_MODE_LOOP_END || st->pulseUpdatedCycle)
 				{
-					if(st->pulseDir==1 && tmpLedNum>stop)//Loop was finished, move currentLed to edge for next loop
-					{
-						st->currentLed = start;
-						if(checkCycleCounter(&st->pulseCycle))
-						{
-							st->pulseDone = true;
-							st->pulseActive = false;
-						}
-					}
-					else if(st->pulseDir == -1 && tmpLedNum<start)
-					{
-						st->currentLed = stop;
-						if(checkCycleCounter(&st->pulseCycle))
-						{
-							st->pulseDone = true;
-							st->pulseActive = false;
-						}
-					}
+					tmpLedNum = st->currentLed+i*st->pulseDir*-1;
+	//				if(i>=(pulseLength-1))
+	//				{
+	//					if(st->pulseDir==1 && tmpLedNum>stop)//Loop was finished, move currentLed to edge for next loop
+	//					{
+	//						st->currentLed = start;
+	//						if(checkCycleCounter(&st->pulseCycle))
+	//						{
+	//							st->pulseDone = true;
+	//							st->pulseActive = false;
+	//						}
+	//					}
+	//					else if(st->pulseDir == -1 && tmpLedNum<start)
+	//					{
+	//						st->currentLed = stop;
+	//						if(checkCycleCounter(&st->pulseCycle))
+	//						{
+	//							st->pulseDone = true;
+	//							st->pulseActive = false;
+	//						}
+	//					}
+	//				}
 				}
-			}
-			else
-			{
-				//Invalid mode, fail silently
-				return;
-			}
-			//Calculate colours and write LED
-			if(tmpLedNum>=start && tmpLedNum<=stop)
-			{
-				tmpR=pulseCalcColourPerLed(st,i+1,COL_RED);
-				tmpG=pulseCalcColourPerLed(st,i+1,COL_GREEN);
-				tmpB=pulseCalcColourPerLed(st,i+1,COL_BLUE);
-				apa102SetPixelWithGlobal(strip,tmpLedNum,tmpR,tmpG,tmpB,ps->globalSetting,true);
+				else if(ps->mode == LEDSEG_MODE_BOUNCE)
+				{
+					tmpLedNum=utilBounceValue(st->currentLed,i*st->pulseDir*-1,start,stop,NULL);
+				}
+				else if(ps->mode == LEDSEG_MODE_LOOP)
+				{
+					tmpLedNum=utilLoopValue(st->currentLed,i*st->pulseDir*-1,start,stop);
+				}
+				else
+				{
+					//Invalid mode, fail silently
+					return;
+				}
+				//Calculate colours and write LED
+				if(tmpLedNum>=start && tmpLedNum<=stop)
+				{
+					tmpR=pulseCalcColourPerLed(st,i+1,COL_RED);
+					tmpG=pulseCalcColourPerLed(st,i+1,COL_GREEN);
+					tmpB=pulseCalcColourPerLed(st,i+1,COL_BLUE);
+					apa102SetPixelWithGlobal(strip,tmpLedNum,tmpR,tmpG,tmpB,ps->globalSetting,true);
+				}
 			}
 		}
 	}

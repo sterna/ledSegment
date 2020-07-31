@@ -103,6 +103,7 @@ bool animPrideWheelGetDone();
 prideCols_t animLoadNextRainbowWheel(ledSegmentFadeSetting_t* fs, uint8_t seg, prideCols_t colIndex);
 
 uint8_t animSeqInit(uint8_t seg, bool isSyncGroup, uint32_t cycles, animSeqPoint_t* points, uint8_t nofPoints);
+uint8_t animSeqInitExisting(uint8_t existingSeq, uint8_t seg, bool isSyncGroup, uint32_t cycles, animSeqPoint_t* points, uint8_t nofPoints);
 void animSeqFillPoint(animSeqPoint_t* point, ledSegmentFadeSetting_t* fs, ledSegmentPulseSetting_t* ps, uint32_t waitAfter, bool waitForTrigger, bool fadeToNext, bool switchAtMax);
 bool animSeqExists(uint8_t seqNum);
 bool animSeqAppendPoint(uint8_t seqNum, animSeqPoint_t* point);
@@ -113,7 +114,7 @@ void animSeqTrigTransition(uint8_t seqNum);
 void animSeqSetActive(uint8_t seqNum, bool active);
 bool animSeqIsActive(uint8_t seqNum);
 
-uint8_t animGenerateFadeSequence(uint8_t seg, uint8_t syncGroup, uint32_t cycles, uint8_t nofPoints, RGB_t* sequence, uint32_t fadeTime, uint32_t waitTime, uint8_t maxScaling);
+uint8_t animGenerateFadeSequence(uint8_t existingSeq, uint8_t seg, uint8_t syncGroup, uint32_t cycles, uint8_t nofPoints, RGB_t* sequence, uint32_t fadeTime, uint32_t waitTime, uint8_t maxScaling);
 
 void animTask();
 

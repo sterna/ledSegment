@@ -71,6 +71,7 @@ typedef struct
 	uint8_t globalSetting;			//The global setting to be used
 
 	uint8_t colourSeqNum;			//Number of colours in a colour sequence. If colourSeqNum=0, colour sequencing is not used. If used, it overrides the normal colour setting
+	uint8_t colourSeqLoops;			//The number of times the colours sequence pulse shall loop
 	RGB_t* colourSeqPtr;			//Pointer to the colour sequence list.
 }ledSegmentPulseSetting_t;
 
@@ -138,10 +139,10 @@ typedef struct
 	bool pulseActive;					//Indicates if the strip has an active pulse
 	bool pulseDone;						//Indicates if the pulse has completed it's cycles, but that fade color shall remain unchanged
 	ledSegmentPulseSetting_t confPulse;	//All information about the pulse
+	bool pulseUpdatedCycle;				//Indicates that we have just generated LEDs to trigger a cycle change for glitter modes. For other modes, this indicates that we have run out of cycles and is on the last one
 
 	//Glitter specific state
 	//State of the glitter colour
-	bool pulseUpdatedCycle;				//Indicates that we have just generated LEDs to trigger a cycle change for glitter modes
 	uint8_t glitterR;
 	uint8_t glitterG;
 	uint8_t glitterB;
