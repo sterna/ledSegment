@@ -62,7 +62,7 @@ typedef struct
 	uint16_t ledsMaxPower;			//The number of LEDs that shall be the middle of the pulse (the number of LEDs using max power). Glitter: The number of fully lit glitter points.
 	uint16_t ledsFadeBefore;		//The number of LEDs to be faded before the max LED segment start
 	uint16_t ledsFadeAfter;			//The number of LEDs to be faded after the max LED segment end
-	uint16_t startLed;				//The LED to start with. If larger than the total LEDs in the segment, it will start from the top
+	int16_t startLed;				//The LED to start with, relative to the segment. If larger than the total LEDs in the segment, it will start from the top, or if it's smaller, it will start from the bottom.
 
 	int8_t startDir;				//The direction we shall start in (+1 or -1)
 	uint16_t pixelsPerIteration;	//The number of pixels the pulse shall move per iteration. Glitter: The number of piels to fade for each iteration
@@ -93,7 +93,6 @@ typedef struct
 	uint16_t fadePeriodMultiplier;	//This is used for long fades to avoid capping the rate (not set by user)
 	int8_t startDir;				//The direction we shall start in (+1 or -1). Direction 1 will fade all colours from min to max, and -1 will fade from max to min
 	uint32_t cycles;				//The number of half-cycles (min->max is one cycle). If cycles=0, it will run forever (or rather for max uint32 cycles, which is kinda forever)
-//	uint32_t fadeCycles;			//The number of animation cycles that will actually run. Not set by user, but generated during setFade.
 	uint8_t globalSetting;			//The global setting to be used
 	uint8_t syncGroup;				//Indicates which sync group a fade segment belongs to. All fades of the same syncGroup will sync up at min/max. syncGroup=0 turns this feature off
 
@@ -133,7 +132,7 @@ typedef struct
 
 	//Pulse state
 	int8_t pulseDir;					//The wander direction for the LED
-	uint16_t currentLed;				//The current first LED in the pulse (the most faded LED before the start of max). Current LED is absolute relative to the strip. In glitter mode, this is the number of lit LEDs
+	int16_t currentLed;				//The current first LED in the pulse (the most faded LED before the start of max). Current LED is absolute relative to the whole strip (not the segment). In glitter mode, this is the number of lit LEDs
 	uint16_t cyclesToPulseMove;			//The number of cycles left to pulse movement. For glitter mode, this is the number of cycles until the fade for each subsegment is done
 	uint32_t pulseCycle;				//The current cycle of the animation
 	bool pulseActive;					//Indicates if the strip has an active pulse

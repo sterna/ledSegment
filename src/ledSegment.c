@@ -332,6 +332,11 @@ bool ledSegSetPulse(uint8_t seg, ledSegmentPulseSetting_t* ps)
 	}
 	else
 	{
+		//Allows to start index from the back
+		while(pu->startLed<0)
+		{
+			pu->startLed=pu->startLed+sg->stop-sg->start+2;
+		}
 		if(sg->invertPulse)
 		{
 			pu->startLed = sg->stop-pu->startLed+1;
@@ -820,6 +825,7 @@ bool ledSegRestart(uint8_t seg, bool restartFade, bool restartPulse)
 			//Todo: Add handling for bounce
 			st->currentLed=st->confPulse.startLed;
 		}
+		st->pulseUpdatedCycle=false;
 		st->pulseActive=true;
 		st->pulseDone=false;
 	}
@@ -1124,7 +1130,7 @@ static void pulseCalcAndSet(uint8_t seg)
 	{
 		if(ps->mode == LEDSEG_MODE_LOOP_END || st->pulseUpdatedCycle)
 		{
-			if(utilValueWillOverflow(st->currentLed,ps->pixelsPerIteration*st->pulseDir,start,stop))
+			if((st->currentLed>=start) && (st->currentLed<=stop) && utilValueWillOverflow(st->currentLed,ps->pixelsPerIteration*st->pulseDir,start,stop))
 			{
 				if(checkCycleCounter(&st->pulseCycle))
 				{
