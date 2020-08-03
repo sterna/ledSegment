@@ -178,6 +178,7 @@ bool ledSegSetRange(uint8_t seg, uint16_t start, uint16_t stop,uint8_t r,uint8_t
 bool ledSegSetRangeWithGlobal(uint8_t seg, uint16_t start, uint16_t stop,uint8_t r,uint8_t g,uint8_t b,uint8_t global);
 
 bool ledSegGetState(uint8_t seg, ledSegment_t* state);
+uint16_t ledSegGetLen(uint8_t seg);
 bool ledSegGetSyncGroupDone(uint8_t syncGrp);
 uint8_t ledSegGetSyncGroup(uint8_t seg);
 bool ledSegGetPulseActiveState(uint8_t seg);
@@ -192,6 +193,7 @@ bool ledSegClearPulse(uint8_t seg);
 bool ledSegSetGlobal(uint8_t seg, uint8_t fadeGlobal, uint8_t pulseGlobal);
 void ledSegSetModeChange(ledSegmentFadeSetting_t* fs, uint8_t segment, bool switchAtMax);
 
+bool ledSegisGlitterMode(ledSegmentMode_t mode);
 bool ledSegRestart(uint8_t seg, bool restartFade, bool restartPulse);
 
 

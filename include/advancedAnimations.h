@@ -11,12 +11,13 @@
 #include "ledSegment.h"
 #include "utils.h"
 #include "time.h"
+#include "events.h"
 
 //The call period for the animation task in ms
-#define ANIM_TASK_PERIOD	55
+#define ANIM_TASK_PERIOD	37
 
 //The maximum number of allowed animation points in one sequence (each point consumes 60B of SRAM)
-#define ANIM_SEQ_MAX_POINTS	10
+#define ANIM_SEQ_MAX_POINTS	15
 //The maximum possible of saved animation sequences (each animation sequence uses ANIM_SEQ_MAX_POINTS*60B+12B SRAM)
 #define ANIM_SEQ_MAX_SEQS	5
 
@@ -70,6 +71,7 @@ typedef enum
  * Defines a single point of animation setting
  * the mode and cycles of the fade and pulse controls how long this point runs for
  * Todo: Add support to ignore the finishing of a fade or pulse for this point (to load a pulse or fade that will run indefinitely)
+ * Todo: Add possibility to keep using a fade or pulse from the previous point (a no-change mode)
  */
 typedef struct
 {
@@ -77,10 +79,11 @@ typedef struct
 	bool fadeUsed;
 	ledSegmentPulseSetting_t pulse;	//The fade setting used for this specific point
 	bool pulseUsed;
-	uint32_t waitAfter;				//The time the final state (after both fade/pulse is done) shall persist (in ms)
+	uint32_t waitAfter;				//The time the final state (after both fade/pulse is done) shall persist (in ms). If switchOnTime is given, this time starts immediately after the initial switch is finished
 	bool waitForTrigger;			//Set the point to wait for a trigger to initiate switching to next. Once trigger is received, waitAfter time will start
 	bool switchAtMax;
 	bool fadeToNext;				//Indicates if we should fade into the next point or not Todo: Consider renaming to fadeToThis or something
+	bool switchOnTime;				//Indicates that the switch shall happen based on time only, disregarding if they're done. This uses the waitAfter time. If switchOnTime and waitForTrigger are both given, the trigger can be activated at any time.
 }animSeqPoint_t;
 
 
@@ -104,7 +107,7 @@ prideCols_t animLoadNextRainbowWheel(ledSegmentFadeSetting_t* fs, uint8_t seg, p
 
 uint8_t animSeqInit(uint8_t seg, bool isSyncGroup, uint32_t cycles, animSeqPoint_t* points, uint8_t nofPoints);
 uint8_t animSeqInitExisting(uint8_t existingSeq, uint8_t seg, bool isSyncGroup, uint32_t cycles, animSeqPoint_t* points, uint8_t nofPoints);
-void animSeqFillPoint(animSeqPoint_t* point, ledSegmentFadeSetting_t* fs, ledSegmentPulseSetting_t* ps, uint32_t waitAfter, bool waitForTrigger, bool fadeToNext, bool switchAtMax);
+void animSeqFillPoint(animSeqPoint_t* point, ledSegmentFadeSetting_t* fs, ledSegmentPulseSetting_t* ps, uint32_t waitAfter, bool waitForTrigger, bool switchOnTime, bool fadeToNext, bool switchAtMax);
 bool animSeqExists(uint8_t seqNum);
 bool animSeqAppendPoint(uint8_t seqNum, animSeqPoint_t* point);
 bool animSeqRemovePoint(uint8_t seqNum, uint8_t n);
@@ -115,6 +118,8 @@ void animSeqSetActive(uint8_t seqNum, bool active);
 bool animSeqIsActive(uint8_t seqNum);
 
 uint8_t animGenerateFadeSequence(uint8_t existingSeq, uint8_t seg, uint8_t syncGroup, uint32_t cycles, uint8_t nofPoints, RGB_t* sequence, uint32_t fadeTime, uint32_t waitTime, uint8_t maxScaling);
+
+uint8_t animGenerateBeatSequence(uint8_t existingSeq, uint8_t seg, uint8_t syncGroup, uint32_t cycles, uint8_t nofPoints, ledSegmentFadeSetting_t* fade, ledSegmentPulseSetting_t* pulse, uint8_t globalMax, eventTimeList* events, bool useAvgTime);
 
 void animTask();
 

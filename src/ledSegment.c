@@ -89,7 +89,6 @@ static uint8_t pulseCalcColourPerLed(ledSegmentState_t* st,uint16_t led, colour_
 static void pulseCalcAndSet(uint8_t seg);
 static bool checkCycleCounter(uint32_t* cycle);
 static bool checkCycleCounterU16(uint16_t* cycle);
-static bool isGlitterMode(ledSegmentMode_t mode);
 static bool checkSyncReadyFade(uint8_t syncGrp, uint8_t seg);
 static bool checkFadeNotWaitingForSyncAll(uint8_t syncGrp);
 static void resetSyncDoneGroup(uint8_t syncGrp);
@@ -310,7 +309,7 @@ bool ledSegSetPulse(uint8_t seg, ledSegmentPulseSetting_t* ps)
 
 	st->pulseCycle=ps->cycles;
 	st->pulseActive = true;
-	if(isGlitterMode(pu->mode))
+	if(ledSegisGlitterMode(pu->mode))
 	{
 		//Allocate memory for the ring buffer.
 		free(st->glitterActiveLeds);	//Remove old buffer
@@ -820,7 +819,7 @@ bool ledSegRestart(uint8_t seg, bool restartFade, bool restartPulse)
 		st->pulseDir = st->confPulse.startDir;
 		st->currentLed = st->confPulse.startLed;
 		st->pulseCycle=st->confPulse.cycles;
-		if(isGlitterMode(st->confPulse.mode))
+		if(ledSegisGlitterMode(st->confPulse.mode))
 		{
 			//Todo: Add handling for bounce
 			st->currentLed=st->confPulse.startLed;
@@ -918,6 +917,33 @@ void ledSegSetModeChange(ledSegmentFadeSetting_t* fs, uint8_t seg, bool switchAt
 }
 
 /*
+ * Tells if a mode is a glitter mode
+ */
+bool ledSegisGlitterMode(ledSegmentMode_t mode)
+{
+	if(mode>=LEDSEG_MODE_GLITTER_LOOP && mode<=LEDSEG_MODE_GLITTER_BOUNCE)
+	{
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+}
+
+/*
+ * Returns the total length of a led segment
+ */
+uint16_t ledSegGetLen(uint8_t seg)
+{
+	if(!ledSegExistsNotAll(seg))
+	{
+		return 0;	//A non-exisiting ledSeg has the length of 0
+	}
+	return segments[seg].stop-segments[seg].start+1;
+}
+
+/*
  * The great big update function. This should be run as often as possible (not from interrupts!)
  * It keeps its own time gate, and will from time to time create a heavy load
  *
@@ -996,6 +1022,7 @@ void ledSegRunIteration()
 		}
 	}
 }
+
 
 
 //-------------Internal functions------------------------//
@@ -1121,11 +1148,6 @@ static void pulseCalcAndSet(uint8_t seg)
 	bool glitterJustGenerated=false;
 	//Move LED and update direction
 	//Check if it's time to move a pixel
-	/*
-	 * Todo: Make a proper cycle counter for modes that are not glitter modes
-	 * Vid ett cykelslut (currentLed overflows i kör-riktningen), räkna då ner cycle counter med ett steg
-	 * Om cycle counter blev 0, sätt den i läget outOfCycles (använd st->pulseUpdatedCycle). Det här läget fungerar overrides ps.mode och funkar likadant som LEDSEG_MODE_LOOP_END
-	 */
 	if(checkCycleCounterU16(&st->cyclesToPulseMove) && !st->pulseDone)
 	{
 		if(ps->mode == LEDSEG_MODE_LOOP_END || st->pulseUpdatedCycle)
@@ -1196,7 +1218,7 @@ static void pulseCalcAndSet(uint8_t seg)
 				st->currentLed = utilLoopValue(st->currentLed,ps->pixelsPerIteration*st->pulseDir,start,stop);
 			}
 		}
-		else if(isGlitterMode(ps->mode))
+		else if(ledSegisGlitterMode(ps->mode))
 		{
 			//If fade is not active, make sure to clear all LEDs (which is what the fade would have done)
 			if(!st->fadeActive)
@@ -1210,16 +1232,6 @@ static void pulseCalcAndSet(uint8_t seg)
 			//Here, we also check what we need to do based on mode.
 			if(st->currentLed>=glitterTotal)
 			{
-				/*
-				 *
-				 * When is a cycle finished? We get here when we have already added all glitter LEDs
-				 *
-				 * Loop - go to glitter total, restart from 0 -> Done when all glitter LEDs are lit, which is currentLed>=glitter total
-				 * Loop end - Same as Loop, but doesn't restart. Mark as done at the same time.
-				 * Loop persist - First cycle is done when all LEDs are lit (currentLed>=glitterTotal). Each subsequent cycle happens when we have finished lightning up to all LEDs again
-				 * Bounce - Whenever we change direction.
-				 */
-
 				if(ps->mode==LEDSEG_MODE_GLITTER_LOOP)
 				{
 					memset(st->glitterActiveLeds,0,glitterTotal*sizeof(uint16_t));
@@ -1287,7 +1299,7 @@ static void pulseCalcAndSet(uint8_t seg)
 
 
 	//Glitter mode:
-	if(isGlitterMode(ps->mode))
+	if(ledSegisGlitterMode(ps->mode))
 	{
 		//Load the current index of the ring buffer
 		uint16_t currentIndex=st->currentLed;
@@ -1427,27 +1439,6 @@ static void pulseCalcAndSet(uint8_t seg)
 				if(ps->mode == LEDSEG_MODE_LOOP_END || st->pulseUpdatedCycle)
 				{
 					tmpLedNum = st->currentLed+i*st->pulseDir*-1;
-	//				if(i>=(pulseLength-1))
-	//				{
-	//					if(st->pulseDir==1 && tmpLedNum>stop)//Loop was finished, move currentLed to edge for next loop
-	//					{
-	//						st->currentLed = start;
-	//						if(checkCycleCounter(&st->pulseCycle))
-	//						{
-	//							st->pulseDone = true;
-	//							st->pulseActive = false;
-	//						}
-	//					}
-	//					else if(st->pulseDir == -1 && tmpLedNum<start)
-	//					{
-	//						st->currentLed = stop;
-	//						if(checkCycleCounter(&st->pulseCycle))
-	//						{
-	//							st->pulseDone = true;
-	//							st->pulseActive = false;
-	//						}
-	//					}
-	//				}
 				}
 				else if(ps->mode == LEDSEG_MODE_BOUNCE)
 				{
@@ -1514,7 +1505,7 @@ static bool checkCycleCounterU16(uint16_t* cycle)
 	*cycle=tmp;
 	return false;
 }
-static bool segSyncRelease[LEDSEG_MAX_SEGMENTS];
+static bool segSyncReleaseFade[LEDSEG_MAX_SEGMENTS];
 /*
  * Calculates the colour to set for the fade part of this segment
  * This colour is applied to all parts of the LED fade segment
@@ -1530,18 +1521,9 @@ static void fadeCalcColour(uint8_t seg)
 	}
 	st=&(segments[seg].state);
 	conf=&(st->confFade);
-	uint8_t compareColor=COL_BLUE;
 	bool redReversed=false;
 	bool blueReversed=false;
 	bool greenReversed=false;
-	if(conf->b_max == conf->b_min)
-	{
-		compareColor = COL_GREEN;
-		if(conf->g_max == conf->g_min)
-		{
-			compareColor = COL_RED;
-		}
-	}
 	if(st->fadeActive)
 	{
 		//Check if the direction of any colour is reveresed
@@ -1645,7 +1627,7 @@ static void fadeCalcColour(uint8_t seg)
 				}
 				if(checkSyncReadyFade(conf->syncGroup,seg))
 				{
-					segSyncRelease[conf->syncGroup]=true;
+					segSyncReleaseFade[conf->syncGroup]=true;
 				}
 				//Check: Have all reached and are we at the lowest seg in the group?
 				//If so, we can release all segs in this group
@@ -1663,7 +1645,7 @@ static void fadeCalcColour(uint8_t seg)
 			 * 			If no, run one more cycle and check again.
 			 */
 
-			if(!conf->syncGroup || (conf->syncGroup && segSyncRelease[conf->syncGroup]))
+			if(!conf->syncGroup || (conf->syncGroup && segSyncReleaseFade[conf->syncGroup]))
 			{
 				//Check if the fade is done. if so, mark this fade as done. Otherwise, update what is do be done at an extreme
 				if(st->fadeCycle && checkCycleCounter(&st->fadeCycle))
@@ -1738,9 +1720,9 @@ static void fadeCalcColour(uint8_t seg)
 					st->fadeState=LEDSEG_FADE_NOT_DONE;
 				}
 				//Check if ALL segments in the group have finished syncing. If so, reset all of them to NOT_FINISHED (except if they're done)
-				if(segSyncRelease[conf->syncGroup] && checkFadeNotWaitingForSyncAll(conf->syncGroup))
+				if(segSyncReleaseFade[conf->syncGroup] && checkFadeNotWaitingForSyncAll(conf->syncGroup))
 				{
-					segSyncRelease[conf->syncGroup]=false;
+					segSyncReleaseFade[conf->syncGroup]=false;
 				}
 			}
 		}	//End of allReached
@@ -1815,21 +1797,6 @@ static void resetSyncDoneGroup(uint8_t syncGrp)
 		{
 			st->fadeState=LEDSEG_FADE_NOT_DONE;
 		}
-	}
-}
-
-/*
- * Tells if a mode is a glitter mode
- */
-static bool isGlitterMode(ledSegmentMode_t mode)
-{
-	if(mode>=LEDSEG_MODE_GLITTER_LOOP && mode<=LEDSEG_MODE_GLITTER_BOUNCE)
-	{
-		return true;
-	}
-	else
-	{
-		return false;
 	}
 }
 

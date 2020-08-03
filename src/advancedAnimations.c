@@ -250,7 +250,7 @@ uint8_t animSeqInit(uint8_t seg, bool isSyncGroup, uint32_t cycles, animSeqPoint
 	memcpy(seq->points,points,nofPoints*sizeof(animSeqPoint_t));
 
 	//Load first point (if it's a fade, it will be handled by the task later)
-	animSeqLoadCurrentPoint(seq,true);
+	//animSeqLoadCurrentPoint(seq,true);
 	animSeqsNofSeqs++;
 	return animSeqsNofSeqs-1;
 }
@@ -282,7 +282,7 @@ uint8_t animSeqInitExisting(uint8_t existingSeq, uint8_t seg, bool isSyncGroup, 
  * Fills a point with given data
  * Note: Switch at max is only used i fadeToNext is used
  */
-void animSeqFillPoint(animSeqPoint_t* point, ledSegmentFadeSetting_t* fs, ledSegmentPulseSetting_t* ps, uint32_t waitAfter, bool waitForTrigger, bool fadeToNext, bool switchAtMax)
+void animSeqFillPoint(animSeqPoint_t* point, ledSegmentFadeSetting_t* fs, ledSegmentPulseSetting_t* ps, uint32_t waitAfter, bool waitForTrigger, bool switchOnTime, bool fadeToNext, bool switchAtMax)
 {
 	point->fadeUsed=false;
 	point->pulseUsed=false;
@@ -300,6 +300,7 @@ void animSeqFillPoint(animSeqPoint_t* point, ledSegmentFadeSetting_t* fs, ledSeg
 	point->fadeToNext=fadeToNext;
 	point->switchAtMax = switchAtMax;
 	point->waitForTrigger=waitForTrigger;
+	point->switchOnTime=switchOnTime;
 }
 
 /*
@@ -353,7 +354,7 @@ bool animSeqRemoveAllPoints(uint8_t seqNum)
  */
 bool animSeqExists(uint8_t seqNum)
 {
-	if(seqNum<animSeqsNofSeqs)
+	if(seqNum<animSeqsNofSeqs || seqNum==LEDSEG_ALL)
 	{
 		return true;
 	}
@@ -391,6 +392,14 @@ void animSeqSetActive(uint8_t seqNum, bool active)
 {
 	if(!animSeqExists(seqNum))
 	{
+		return;
+	}
+	if(seqNum==LEDSEG_ALL)
+	{
+		for(uint8_t i=0;i<animSeqsNofSeqs;i++)
+		{
+			animSeqSetActive(i,active);
+		}
 		return;
 	}
 	animSeqs[seqNum].isActive=active;
@@ -510,7 +519,7 @@ uint8_t animGenerateFadeSequence(uint8_t existingSeq, uint8_t seg, uint8_t syncG
 		fd.g_max=RGBTmpTo.g;
 		fd.b_min=RGBTmpFrom.b;
 		fd.b_max=RGBTmpTo.b;
-		animSeqFillPoint(&pts[i],&fd,NULL,waitTime,false,false,false);
+		animSeqFillPoint(&pts[i],&fd,NULL,waitTime,false,false,false,false);
 	}
 	if(animSeqExists(existingSeq))
 	{
@@ -519,6 +528,88 @@ uint8_t animGenerateFadeSequence(uint8_t existingSeq, uint8_t seg, uint8_t syncG
 	else
 	{
 		return animSeqInit(seg,false,cycles,pts,nofPoints);
+	}
+}
+
+//The precentage of the time to use
+const uint16_t beatFadeUpFactorMax=100;
+volatile uint16_t beatFadeUpFactor=10;
+
+/*
+ * Generates a beat sequence
+ * The beat sequence uses a fade and a pulse setting, but will match speeds to the beat.
+ * Each beat consists of a quick fade from min to max (with higher global setting), then a slower fade from max to min with the pulse having a reasonably similar timing setting
+ * The timings given set the total time for for each two accompanying points (the up + down)
+ */
+uint8_t animGenerateBeatSequence(uint8_t existingSeq, uint8_t seg, uint8_t syncGroup, uint32_t cycles, uint8_t nofPoints,
+		ledSegmentFadeSetting_t* fade, ledSegmentPulseSetting_t* pulse, uint8_t globalMax, eventTimeList* events, bool useAvgTime)
+{
+	if((animSeqsNofSeqs>=ANIM_SEQ_MAX_SEQS && !animSeqExists(existingSeq)) || !ledSegExists(seg) || nofPoints>(ANIM_SEQ_MAX_POINTS/2))
+	{
+		return ANIM_SEQ_MAX_SEQS+1;
+	}
+	animSeqPoint_t pts[2*nofPoints];
+	//Copy settings to avoid destroying them
+	ledSegmentFadeSetting_t fadeTmp;
+	ledSegmentPulseSetting_t pulseTmp;
+	memcpy(&fadeTmp,fade,sizeof(ledSegmentFadeSetting_t));
+	memcpy(&pulseTmp,pulse,sizeof(ledSegmentPulseSetting_t));
+	fadeTmp.cycles=1;
+
+	uint16_t segLen=ledSegGetLen(seg);
+	if(segLen==0)
+	{
+		segLen=150;	//Use a default segment length (yes, this is pulled out of my ass)
+	}
+	//Create points
+	for(uint8_t i=0;i<nofPoints;i++)
+	{
+		uint32_t totalTime=events->eventTimes[i];
+		//For avg time, we will only use 2 points, because it will always have the same time
+		if(useAvgTime)
+		{
+			nofPoints=1;
+			totalTime=events->avgTime;
+		}
+		uint32_t fadeUpTime=(totalTime*beatFadeUpFactor)/beatFadeUpFactorMax;
+		uint32_t fadeDownTime=(totalTime*(beatFadeUpFactorMax-beatFadeUpFactor))/beatFadeUpFactorMax;
+		//Prepare fade up
+		fadeTmp.globalSetting=globalMax;
+		pulseTmp.globalSetting=globalMax;
+		fadeTmp.fadeTime=fadeUpTime;
+		fadeTmp.startDir=1;
+		//Fade up shall not have a pulse
+		if(ledSegisGlitterMode(pulseTmp.mode))
+		{
+			pulseTmp.pixelTime=fadeDownTime;
+			pulseTmp.startDir=-1;
+			pulseTmp.startLed=-1;
+		}
+		else
+		{
+			pulseTmp.pixelTime=1;
+			pulseTmp.pixelsPerIteration=(segLen*pulseTmp.pixelTime*LEDSEG_UPDATE_PERIOD_TIME)/fadeDownTime;
+			if(pulseTmp.pixelsPerIteration<1)
+			{
+				pulseTmp.pixelsPerIteration=1;
+			}
+		}
+		animSeqFillPoint(&pts[2*i],&fadeTmp,NULL,2*fadeUpTime,false,true,false,false);
+		//Prepare fade down
+		fadeTmp.globalSetting=0;
+		pulseTmp.globalSetting=0;
+		fadeTmp.fadeTime=fadeDownTime;
+		fadeTmp.startDir=-1;
+		//Fade down pulse shall finish during the fade
+		animSeqFillPoint(&pts[2*i+1],&fadeTmp,NULL,fadeDownTime-2*fadeUpTime,false,true,false,false);
+	}
+	if(animSeqExists(existingSeq))
+	{
+		return animSeqInitExisting(existingSeq,seg,false,cycles,pts,2*nofPoints);
+	}
+	else
+	{
+		return animSeqInit(seg,false,cycles,pts,2*nofPoints);
 	}
 }
 
@@ -626,7 +717,7 @@ void animTask()
 //				fadeDone=ledSegGetFadeDone(seg);
 //				pulseDone=ledSegGetPulseDone(seg);
 			}
-			if(fadeDone && pulseDone)
+			if((fadeDone && pulseDone) || seq->points[seq->currentPoint].switchOnTime)
 			{
 				//We now know that the point is done. Check if we need to keep waiting.
 
@@ -693,9 +784,9 @@ void animTask()
 			}
 			if(seq->isFadingToNextPoint && ledSegGetFadeSwitchDone(seg))
 			{
-				ledSegmentPulseSetting_t* ps=&(seq->points[seq->currentPoint].pulse);
-				if(ps)
+				if(seq->points[seq->currentPoint].pulseUsed)
 				{
+					ledSegmentPulseSetting_t* ps=&(seq->points[seq->currentPoint].pulse);
 					ledSegSetPulse(seg,ps);
 				}
 				else
