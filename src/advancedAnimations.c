@@ -282,7 +282,8 @@ uint8_t animSeqInitExisting(uint8_t existingSeq, uint8_t seg, bool isSyncGroup, 
  * Fills a point with given data
  * Note: Switch at max is only used i fadeToNext is used
  */
-void animSeqFillPoint(animSeqPoint_t* point, ledSegmentFadeSetting_t* fs, ledSegmentPulseSetting_t* ps, uint32_t waitAfter, bool waitForTrigger, bool switchOnTime, bool fadeToNext, bool switchAtMax)
+void animSeqFillPoint(animSeqPoint_t* point, ledSegmentFadeSetting_t* fs, ledSegmentPulseSetting_t* ps, uint32_t waitAfter,
+		bool fadePeristFromLast, bool pulsePeristFromLast, bool waitForTrigger, bool switchOnTime, bool fadeToNext, bool switchAtMax)
 {
 	point->fadeUsed=false;
 	point->pulseUsed=false;
@@ -296,11 +297,21 @@ void animSeqFillPoint(animSeqPoint_t* point, ledSegmentFadeSetting_t* fs, ledSeg
 		memcpy(&(point->pulse),ps,sizeof(ledSegmentPulseSetting_t));
 		point->pulseUsed=true;
 	}
+	if(fadePeristFromLast)
+	{
+		point->fadeUsed=true;
+	}
+	if(pulsePeristFromLast)
+	{
+		point->pulseUsed=true;
+	}
 	point->waitAfter=waitAfter;
 	point->fadeToNext=fadeToNext;
 	point->switchAtMax = switchAtMax;
 	point->waitForTrigger=waitForTrigger;
 	point->switchOnTime=switchOnTime;
+	point->fadePersistFromLast=fadePeristFromLast;
+	point->pulsePersistFromLast=pulsePeristFromLast;
 }
 
 /*
@@ -480,8 +491,9 @@ bool animSeqTrigReady(uint8_t seqNum)
  * Generates and allocates an animation sequence that performs a colour wheel with the given colour sequence
  * Fadetime is the time to switch from one colour fully to the next.
  * Syncgroup is used to be able to set this for multiple segments
+ * If addPulse is given, it will generate a pulse from the same colour sequence
  */
-uint8_t animGenerateFadeSequence(uint8_t existingSeq, uint8_t seg, uint8_t syncGroup, uint32_t cycles, uint8_t nofPoints, RGB_t* sequence, uint32_t fadeTime, uint32_t waitTime, uint8_t maxScaling)
+uint8_t animGenerateFadeSequence(uint8_t existingSeq, uint8_t seg, uint8_t syncGroup, uint32_t cycles, uint8_t nofPoints, RGB_t* sequence, uint32_t fadeTime, uint32_t waitTime, uint8_t maxScaling, bool addPulse)
 {
 	if((animSeqsNofSeqs>=ANIM_SEQ_MAX_SEQS && !animSeqExists(existingSeq)) || !ledSegExists(seg) || nofPoints>ANIM_SEQ_MAX_POINTS)
 	{
@@ -519,7 +531,36 @@ uint8_t animGenerateFadeSequence(uint8_t existingSeq, uint8_t seg, uint8_t syncG
 		fd.g_max=RGBTmpTo.g;
 		fd.b_min=RGBTmpFrom.b;
 		fd.b_max=RGBTmpTo.b;
-		animSeqFillPoint(&pts[i],&fd,NULL,waitTime,false,false,false,false);
+		if(i==0 && addPulse)	//Load a pulse for the first one
+		{
+			ledSegmentPulseSetting_t ps;
+			ps.colourSeqLoops=1;
+			ps.colourSeqNum=nofPoints;
+			ps.colourSeqPtr = (RGB_t*)sequence;
+			ps.cycles=0;
+			ps.ledsMaxPower=ledSegGetLen(seg)/25;
+			if(ps.ledsMaxPower==0)
+			{
+				ps.ledsMaxPower=50;
+			}
+			ps.ledsFadeBefore=ps.ledsMaxPower/4;
+			ps.ledsFadeAfter=ps.ledsMaxPower/4;
+			ps.mode = LEDSEG_MODE_LOOP_END;
+			ps.pixelTime=fadeTime/500;
+			if(ps.pixelTime == 0)
+			{
+				ps.pixelTime=1;
+			}
+			ps.pixelsPerIteration = 2;
+			ps.startDir=1;
+			ps.startLed=1;
+			ps.globalSetting=0;
+			animSeqFillPoint(&pts[i],&fd,&ps,waitTime,false,true,false,false,false,false);
+		}
+		else
+		{
+			animSeqFillPoint(&pts[i],&fd,NULL,waitTime,false,addPulse,false,false,false,false);
+		}
 	}
 	if(animSeqExists(existingSeq))
 	{
@@ -593,15 +634,16 @@ uint8_t animGenerateBeatSequence(uint8_t existingSeq, uint8_t seg, uint8_t syncG
 			{
 				pulseTmp.pixelsPerIteration=1;
 			}
+			pulseTmp.cycles=0;
 		}
-		animSeqFillPoint(&pts[2*i],&fadeTmp,NULL,2*fadeUpTime,false,true,false,false);
+		animSeqFillPoint(&pts[2*i],&fadeTmp,&pulseTmp,2*fadeUpTime,false,false,false,true,false,false);
 		//Prepare fade down
 		fadeTmp.globalSetting=0;
 		pulseTmp.globalSetting=0;
 		fadeTmp.fadeTime=fadeDownTime;
 		fadeTmp.startDir=-1;
 		//Fade down pulse shall finish during the fade
-		animSeqFillPoint(&pts[2*i+1],&fadeTmp,NULL,fadeDownTime-2*fadeUpTime,false,true,false,false);
+		animSeqFillPoint(&pts[2*i+1],&fadeTmp,NULL,fadeDownTime-2*fadeUpTime,false,true,false,true,false,false);
 	}
 	if(animSeqExists(existingSeq))
 	{
@@ -622,34 +664,31 @@ static void animSeqLoadCurrentPoint(animSequence_t* seq, bool firstPoint)
 	//We have updated the current point and checked everything. Load the new segment settings
 	animSeqPoint_t* point=&(seq->points[seq->currentPoint]);
 	const uint8_t seg=seq->seg;
-	bool fadeActive=false;
-	bool pulseActive=false;
+	//If mode change fade is used, don't update pulse until we're (Todo: what?)
 	if(point->fadeUsed)
 	{
-		fadeActive=true;
-	}
-	if(point->pulseUsed)
-	{
-		pulseActive=true;
-	}
-	//If mode change fade is used, don't update pulse until we're
-	if(fadeActive)
-	{
-		//Note: This might fuck something up firstPoint
-		if(point->fadeToNext || firstPoint)
+		//Check if we shall load a new fade or keep the old one
+		if(!point->fadePersistFromLast)
 		{
-			animSetModeChange(SIMPLE_COL_NO_CHANGE,&point->fade,seg,point->switchAtMax,0,0,false);
-			seq->isFadingToNextPoint=true;
+			//Note: This might fuck something up firstPoint
+			if(point->fadeToNext || firstPoint)
+			{
+				animSetModeChange(SIMPLE_COL_NO_CHANGE,&point->fade,seg,point->switchAtMax,0,0,false);
+				seq->isFadingToNextPoint=true;
+			}
+			else
+			{
+				ledSegSetFade(seg,&point->fade);
+			}
 		}
 		else
 		{
-			ledSegSetFade(seg,&point->fade);
+			ledSegSetFadeActiveState(seg,true);	//Set fade active, but don't restart or update it
 		}
 	}
 	else
 	{
-//		ledSegSetFadeActiveState(seg,false);
-		ledSegSetFadeActiveState(seg,true);	//Set fade active, but don't restart or update it
+		ledSegSetFadeActiveState(seg,false);	//Set fade active, but don't restart or update it
 	}
 	/*
 	 * 4 cases:
@@ -660,9 +699,17 @@ static void animSeqLoadCurrentPoint(animSequence_t* seq, bool firstPoint)
 	 */
 	if(!seq->isFadingToNextPoint || firstPoint)
 	{
-		if(pulseActive)
+		if(point->pulseUsed)
 		{
-			ledSegSetPulse(seg,&point->pulse);
+			//Check if we shall load a new pulse or keep the old one
+			if(!point->pulsePersistFromLast || firstPoint)
+			{
+				ledSegSetPulse(seg,&point->pulse);
+			}
+			else
+			{
+				ledSegSetPulseActiveState(seg,true);
+			}
 		}
 		else
 		{
@@ -706,11 +753,19 @@ void animTask()
 			}
 			else
 			{
-				if(ledSegGetFadeDone(seg) || !seq->points[seq->currentPoint].fadeUsed)
+				//Look ahead and see if the next point has persist. If so, fade/pulse can be considered done
+				uint8_t nextPoint=seq->currentPoint+1;
+				if(nextPoint>=seq->nofPoints)
+				{
+					nextPoint=0;
+				}
+				if(ledSegGetFadeDone(seg) || !seq->points[seq->currentPoint].fadeUsed
+						|| (seq->points[nextPoint].fadePersistFromLast && seq->points[nextPoint].fadeUsed && seq->cyclesLeft!=1))
 				{
 					fadeDone=true;
 				}
-				if(ledSegGetPulseDone(seg) || !seq->points[seq->currentPoint].pulseUsed)
+				if(ledSegGetPulseDone(seg) || !seq->points[seq->currentPoint].pulseUsed
+						|| (seq->points[nextPoint].pulsePersistFromLast && seq->points[nextPoint].pulseUsed && seq->cyclesLeft!=1))
 				{
 					pulseDone=true;
 				}
@@ -751,12 +806,12 @@ void animTask()
 						seq->waitReleaseTime=0;	//Ensure this is done only once (as soon as new settings are loaded, fade and pulse will stop being done)
 
 						//We have waited now and the current point is now finished.
-						//Update and check point counter
+						//Update and check point counter and load a new point accordingly
 						seq->currentPoint++;
 						if(seq->currentPoint>=seq->nofPoints)
 						{
 							//Check cycle counter if we shall continue looping
-							//Cycles==0 means infite loop
+							//Cycles==0 means infinite loop
 							if(seq->cyclesLeft==0)
 							{
 								seq->currentPoint=0;
@@ -786,8 +841,15 @@ void animTask()
 			{
 				if(seq->points[seq->currentPoint].pulseUsed)
 				{
-					ledSegmentPulseSetting_t* ps=&(seq->points[seq->currentPoint].pulse);
-					ledSegSetPulse(seg,ps);
+					if(!seq->points[seq->currentPoint].pulsePersistFromLast)
+					{
+						ledSegmentPulseSetting_t* ps=&(seq->points[seq->currentPoint].pulse);
+						ledSegSetPulse(seg,ps);
+					}
+					else
+					{
+						ledSegSetPulseActiveState(seg,true);
+					}
 				}
 				else
 				{
