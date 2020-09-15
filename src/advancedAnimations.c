@@ -172,6 +172,7 @@ void animLoadLedSegPulseColour(simpleCols_t col,ledSegmentPulseSetting_t* st, ui
 	st->r_max = tmpCol.r;
 	st->g_max = tmpCol.g;
 	st->b_max = tmpCol.b;
+	st->colourSeqNum=0;
 }
 
 /*
@@ -583,7 +584,7 @@ volatile uint16_t beatFadeUpFactor=10;
  * The timings given set the total time for for each two accompanying points (the up + down)
  */
 uint8_t animGenerateBeatSequence(uint8_t existingSeq, uint8_t seg, uint8_t syncGroup, uint32_t cycles, uint8_t nofPoints,
-		ledSegmentFadeSetting_t* fade, ledSegmentPulseSetting_t* pulse, uint8_t globalMax, eventTimeList* events, bool useAvgTime)
+		ledSegmentFadeSetting_t* fade, ledSegmentPulseSetting_t* pulse, bool useFade, bool usePulse, uint8_t globalMax, eventTimeList* events, bool useAvgTime)
 {
 	if((animSeqsNofSeqs>=ANIM_SEQ_MAX_SEQS && !animSeqExists(existingSeq)) || !ledSegExists(seg) || nofPoints>(ANIM_SEQ_MAX_POINTS/2))
 	{
@@ -594,7 +595,10 @@ uint8_t animGenerateBeatSequence(uint8_t existingSeq, uint8_t seg, uint8_t syncG
 	ledSegmentFadeSetting_t fadeTmp;
 	ledSegmentPulseSetting_t pulseTmp;
 	memcpy(&fadeTmp,fade,sizeof(ledSegmentFadeSetting_t));
-	memcpy(&pulseTmp,pulse,sizeof(ledSegmentPulseSetting_t));
+	if(usePulse)
+	{
+		memcpy(&pulseTmp,pulse,sizeof(ledSegmentPulseSetting_t));
+	}
 	fadeTmp.cycles=1;
 
 	uint16_t segLen=ledSegGetLen(seg);
@@ -616,34 +620,47 @@ uint8_t animGenerateBeatSequence(uint8_t existingSeq, uint8_t seg, uint8_t syncG
 		uint32_t fadeDownTime=(totalTime*(beatFadeUpFactorMax-beatFadeUpFactor))/beatFadeUpFactorMax;
 		//Prepare fade up
 		fadeTmp.globalSetting=globalMax;
-		pulseTmp.globalSetting=globalMax;
 		fadeTmp.fadeTime=fadeUpTime;
 		fadeTmp.startDir=1;
-		//Fade up shall not have a pulse
-		if(ledSegisGlitterMode(pulseTmp.mode))
+		if(usePulse)
 		{
-			pulseTmp.pixelTime=fadeDownTime;
-			pulseTmp.startDir=-1;
-			pulseTmp.startLed=-1;
+			pulseTmp.globalSetting=globalMax;
+			//Fade up shall not have a pulse
+			if(ledSegisGlitterMode(pulseTmp.mode))
+			{
+				pulseTmp.pixelTime=fadeDownTime;
+				pulseTmp.startDir=-1;
+				pulseTmp.startLed=-1;
+			}
+			else
+			{
+				pulseTmp.pixelTime=1;
+				pulseTmp.pixelsPerIteration=(segLen*pulseTmp.pixelTime*LEDSEG_UPDATE_PERIOD_TIME)/fadeDownTime;
+				if(pulseTmp.pixelsPerIteration<1)
+				{
+					pulseTmp.pixelsPerIteration=1;
+				}
+				pulseTmp.cycles=0;
+			}
+		}
+		if(usePulse)
+		{
+			animSeqFillPoint(&pts[2*i],&fadeTmp,&pulseTmp,2*fadeUpTime,false,false,false,true,false,false);
 		}
 		else
 		{
-			pulseTmp.pixelTime=1;
-			pulseTmp.pixelsPerIteration=(segLen*pulseTmp.pixelTime*LEDSEG_UPDATE_PERIOD_TIME)/fadeDownTime;
-			if(pulseTmp.pixelsPerIteration<1)
-			{
-				pulseTmp.pixelsPerIteration=1;
-			}
-			pulseTmp.cycles=0;
+			animSeqFillPoint(&pts[2*i],&fadeTmp,NULL,2*fadeUpTime,false,false,false,true,false,false);
 		}
-		animSeqFillPoint(&pts[2*i],&fadeTmp,&pulseTmp,2*fadeUpTime,false,false,false,true,false,false);
 		//Prepare fade down
+		if(usePulse)
+		{
+			pulseTmp.globalSetting=0;
+		}
 		fadeTmp.globalSetting=0;
-		pulseTmp.globalSetting=0;
 		fadeTmp.fadeTime=fadeDownTime;
 		fadeTmp.startDir=-1;
-		//Fade down pulse shall finish during the fade
-		animSeqFillPoint(&pts[2*i+1],&fadeTmp,NULL,fadeDownTime-2*fadeUpTime,false,true,false,true,false,false);
+		//Fade down pulse shall finish during the fade Todo: Find a way to reset the global while still persisting pulse
+		animSeqFillPoint(&pts[2*i+1],&fadeTmp,NULL,fadeDownTime-2*fadeUpTime,false,usePulse,false,true,false,false);
 	}
 	if(animSeqExists(existingSeq))
 	{
@@ -653,6 +670,41 @@ uint8_t animGenerateBeatSequence(uint8_t existingSeq, uint8_t seg, uint8_t syncG
 	{
 		return animSeqInit(seg,false,cycles,pts,2*nofPoints);
 	}
+}
+
+/*
+ * Takes an existing animation sequence and modifies times so that it fits a beat
+ * If the beat list is shorter than the number of points, the beat list will loop.
+ * Todo: This is bare minimum and could be improved in several steps
+ */
+uint8_t animSeqModifyToBeat(uint8_t existingSeq, eventTimeList* events, bool useAvgTime)
+{
+	//We only allow existing segments
+	if(!animSeqExists(existingSeq))
+	{
+		return ANIM_SEQ_MAX_SEQS+1;
+	}
+	animSequence_t* seq=&animSeqs[existingSeq];
+	const uint8_t eventPointsMax=eventTimeGetNofEventsRecorded(events);
+	uint8_t eventPoint=0;
+	for(uint8_t i=0;i<seq->nofPoints;i++)
+	{
+		animSeqPoint_t* pt=&seq->points[i];
+		pt->switchOnTime=true;
+		if(useAvgTime)
+		{
+			pt->waitAfter=events->avgTime;
+		}
+		else
+		{
+			pt->waitAfter=events->eventTimes[eventPoint++];
+			if(eventPoint>=eventPointsMax)
+			{
+				eventPoint=0;
+			}
+		}
+	}
+	return existingSeq;
 }
 
 /*

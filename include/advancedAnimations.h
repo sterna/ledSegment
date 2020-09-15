@@ -121,8 +121,8 @@ void animSeqSetActive(uint8_t seqNum, bool active);
 bool animSeqIsActive(uint8_t seqNum);
 
 uint8_t animGenerateFadeSequence(uint8_t existingSeq, uint8_t seg, uint8_t syncGroup, uint32_t cycles, uint8_t nofPoints, RGB_t* sequence, uint32_t fadeTime, uint32_t waitTime, uint8_t maxScaling, bool addPulse);
-
-uint8_t animGenerateBeatSequence(uint8_t existingSeq, uint8_t seg, uint8_t syncGroup, uint32_t cycles, uint8_t nofPoints, ledSegmentFadeSetting_t* fade, ledSegmentPulseSetting_t* pulse, uint8_t globalMax, eventTimeList* events, bool useAvgTime);
+uint8_t animGenerateBeatSequence(uint8_t existingSeq, uint8_t seg, uint8_t syncGroup, uint32_t cycles, uint8_t nofPoints, ledSegmentFadeSetting_t* fade, ledSegmentPulseSetting_t* pulse, bool useFade, bool usePulse, uint8_t globalMax, eventTimeList* events, bool useAvgTime);
+uint8_t animSeqModifyToBeat(uint8_t existingSeq, eventTimeList* events, bool useAvgTime);
 
 void animTask();
 
