@@ -23,7 +23,7 @@
  * 	- fadeToNext - if the fade shall fade from the current colour to the next colour. Also supports the setting of switching at max/min for this
  * The program will run a the sequence and load a new point (new settings) whenever each point is done (when both fade and pulse are done).
  * The sequence has a cycle counter itself, and can be set to run for any number of cycles. As usual, if 0 is set, it will run forever.
- * Animation sequence supports running using LESEG_ALL.
+ * Animation sequence supports running using LEDSEG_ALL.
  *
  */
 
@@ -88,6 +88,13 @@ const RGB_t coloursPan[PAN_COL_NOF_COLOURS]=
 	{0xFF,0x1B,0x8D},		//Pink
 	{0xFF,0xDA,0x00},		//Yellow
 	{0x1B,0xB3,0xFF},		//Blue
+};
+
+const RGB_t coloursItaly[ITALY_COL_NOF_COLOURS]=
+{
+	{0x00,0xA0,0x20},		//Green
+	{0xF4,0xF5,0xF0},		//White
+	{0xF0,0x05,0x05},		//Red
 };
 
 /*

@@ -67,6 +67,14 @@ typedef enum
 	PAN_COL_NOF_COLOURS
 }panCols_t;
 
+typedef enum
+{
+	ITALY_COL_GREEN=0,
+	ITALY_COL_WHITE,
+	ITALY_COL_RED,
+	ITALY_COL_NOF_COLOURS
+}italyCols_t;
+
 /*
  * Defines a single point of animation setting
  * the mode and cycles of the fade and pulse controls how long this point runs for
@@ -93,6 +101,7 @@ typedef struct
 extern const RGB_t coloursSimple[SIMPLE_COL_NOF_COLOURS];
 extern const RGB_t coloursPride[PRIDE_COL_NOF_COLOURS];
 extern const RGB_t coloursPan[PAN_COL_NOF_COLOURS];
+extern const RGB_t coloursItaly[ITALY_COL_NOF_COLOURS];
 
 RGB_t animGetColour(simpleCols_t col, uint8_t normalize);
 RGB_t animGetColourPride(prideCols_t col, uint8_t normalize);
